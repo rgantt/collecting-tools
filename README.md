@@ -19,9 +19,22 @@ Because this really only needs to be done once per game you track, I'd like to w
 
 ## Resolving identifiers (ongoing/delta)
 
+Use this if you've added a few games to `physical_games` and now you want to resolve identifiers so you can start to grab prices:
+
 ```bash
-TODO
+# Grab the name,console pairs from the DB view that can detect unresolved identifiers
+% sqlite3 games.2024.db "select title_name || ',' || console from missing_identifiers" > input/games.delta.txt
+
+# From here, same steps as above...
+
+# Retrieve the PC ids for the games
+% python3 -u retrieve_ids.py input/games.delta.txt > output/ids.delta.json
+
+# Update
+% python3 -u populate_ids.py output/ids.delta.json games.db
 ```
+
+Note that you should expect some failures here occasionally since the pricecharting titles are usually significantly different than the spine titles for most games. Failures will be appended to `input/games.delta.txt` and you'll want to review them, correct them, and re-run the process.
 
 ## Capturing prices
 
