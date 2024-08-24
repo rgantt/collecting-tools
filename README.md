@@ -22,5 +22,6 @@ Assume you have a `games.db` SQLite database with `.schema` matching the content
 # Retrieve the prices (loose, used, new) based on the ids
 % python3 -u retrieve_prices.py input/ids.txt > output/prices.json
 
-# TODO: Need to write a populate_prices.py script to shove these into the DB...
+# Insert (a new set of timestamped price observations)
+% python3 -u populate_prices.py output/prices.json games.db
 ```
