@@ -16,6 +16,11 @@ Assume you have a `games.db` SQLite database with `.schema` matching the content
 ## Capturing prices
 
 ```bash
-# This is out of date because I haven't updated the script to operate on PC ids yet
-% python3 -u retrieve_prices.py input/games.txt
+# Grab the PC ids from the DB--assumes you've resolved identifiers already
+% sqlite3 games.db "select pricecharting_id from pricecharting_games order by name asc" > input/ids.txt
+
+# Retrieve the prices (loose, used, new) based on the ids
+% python3 -u retrieve_prices.py input/games.txt > output/prices.json
+
+# TODO: Need to write a populate_prices.py script to shove these into the DB...
 ```

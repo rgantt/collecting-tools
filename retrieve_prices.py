@@ -7,11 +7,9 @@ import sys
 # This must contain a list of pricecharting identifiers (probably extracted via retrieve-ids.py)
 filename=sys.argv[1]
 
-# List of 
 with open(filename) as file:
     games = [line.rstrip() for line in file]
 
-# Function to extract price from HTML using CSS selector
 def extract_price(document, selector):
     price_element = document.select_one(selector)
     if price_element:
@@ -21,11 +19,9 @@ def extract_price(document, selector):
         return float(price_text.replace(',', ''))
     return None
 
-# Function to retrieve pricing data for a game
 def get_game_prices(id):
     url = f"https://www.pricecharting.com/game/{id}"
     response = requests.get(url)
-    print(f"Got response from {url}")
     document = BeautifulSoup(response.content, 'html.parser')
 
     prices = {
@@ -37,11 +33,9 @@ def get_game_prices(id):
     return {
         'time': datetime.datetime.now().isoformat(),
         'game': id,
-        'prices': prices,
-        'url': url
+        'prices': prices
     }
 
-# Main function
 def main():
     failures = []
     price_data = []
@@ -55,6 +49,5 @@ def main():
     print(json.dumps(price_data, indent=2))
     print(json.dumps(failures, indent=2))
 
-# Run the main function
 if __name__ == '__main__':
     main()
