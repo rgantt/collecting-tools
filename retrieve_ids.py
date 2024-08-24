@@ -55,6 +55,7 @@ def get_game_id(game_name, system_name):
 
     return {
         'name': game_name,
+        'console': system_name,
         'pricecharting_id': id,
         'upcs': extract_upcs(document),
         'asin': extract_asin(document),
@@ -62,7 +63,7 @@ def get_game_id(game_name, system_name):
     }
 
 def clean_game_name(original):
-    return original.lower().strip().replace(':', '').replace('.', '').replace("'", '%27').replace(' ', '-').replace('--', '-').replace('--', '-').replace('(', '').replace(')', '').replace('[', '').replace(']', '').strip()
+    return original.lower().strip().replace(':', '').replace('.', '').replace("'", '%27').replace(' ', '-').replace('--', '-').replace('--', '-').replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace('/', '').strip()
 
 def clean_system_name(original):
     return original.lower().replace('new', '').strip().replace(' ', '-')
@@ -72,9 +73,9 @@ def main():
     failed = []
     retrieved = []
     for game in games:
-        game_name, system_name = game.split(',')
+        game_name, _, system_name = game.rpartition(',')
         try:
-            data = get_game_id(game_name, clean_system_name(system_name))
+            data = get_game_id(game_name.strip(), system_name.strip())
             retrieved.append(data)
         except ValueError as err:
             msg = f"Could not retrieve info: {err}"
