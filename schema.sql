@@ -45,3 +45,18 @@ CREATE TABLE pricecharting_prices (
 
 	FOREIGN KEY (pricecharting_id) REFERENCES pricecharting_games (pricecharting_id)
 );
+
+/** Quickly identify entries that have been added to physical_games but haven't yet been resolved in PC */
+CREATE VIEW IF NOT EXISTS missing_identifiers AS
+SELECT
+	a.id,
+	a.name as title_name,
+	a.console,
+	b.name as pricecharting_name,
+	b.pricecharting_id
+FROM physical_games a
+LEFT JOIN physical_games_pricecharting_games c
+	ON c.physical_game = a.id
+LEFT JOIN pricecharting_games b
+	ON c.pricecharting_game = b.id
+WHERE c.id IS NULL;
