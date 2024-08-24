@@ -23,7 +23,7 @@ Use this if you've added a few games to `physical_games` and now you want to res
 
 ```bash
 # Grab the name,console pairs from the DB view that can detect unresolved identifiers
-% sqlite3 games.2024.db "select title_name || ',' || console from missing_identifiers" > input/games.delta.txt
+% sqlite3 games.db "select title_name || ',' || console from missing_identifiers" > input/games.delta.txt
 
 # From here, same steps as above...
 
