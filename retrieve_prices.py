@@ -41,17 +41,17 @@ def get_game_prices(id):
     }
 
 def main():
-    failures = []
+    failed = []
     price_data = []
     for game_id in games:
         try:
             prices = get_game_prices(game_id)
             price_data.append(prices)
         except ValueError as err:
-            failures.append(game_id)
-            print(f"Could not retrieve pricing information for {game_id}", err)
+            msg = f"Could not retrieve pricing info: {err}"
+            failed.append({'game': game_id, 'message': msg})
     print(json.dumps(price_data, indent=2))
-    print(json.dumps(failures, indent=2))
+    print(json.dumps(failed, indent=2))
 
 if __name__ == '__main__':
     main()
