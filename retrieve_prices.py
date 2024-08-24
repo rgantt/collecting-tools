@@ -16,7 +16,11 @@ def extract_price(document, selector):
         price_text = price_element.text.strip()
         if price_text.startswith('$'):
             price_text = price_text[1:]
-        return float(price_text.replace(',', ''))
+        price_text = price_text.replace(',', '')
+        if price_text == '-':
+            return None
+        else:
+            return float(price_text)
     return None
 
 def get_game_prices(id):
