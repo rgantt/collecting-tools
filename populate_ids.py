@@ -11,11 +11,11 @@ def main():
 
     updates = []
     for record in games:
-        updates.append((record['pricecharting_id'], record['url'], record['name'], record['console'],))
+        updates.append((record['pricecharting_id'], record['url'], record['id'],))
 
     con = sqlite3.connect(dbname)
     with con:
-        con.executemany("UPDATE pricecharting_games SET pricecharting_id=?, url=? WHERE name=? AND console=?", updates)
+        con.executemany("UPDATE pricecharting_games SET pricecharting_id=?, url=? WHERE id=?", updates)
         print("Committed.")
     con.close()
 

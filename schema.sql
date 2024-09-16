@@ -15,7 +15,7 @@ create table pricecharting_games (
 
 	pricecharting_id INTEGER,
 	name TEXT NOT NULL,
-	console TEXT NOT NULL
+	console TEXT NOT NULL,
 	url TEXT NOT NULL
 );
 

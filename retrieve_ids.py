@@ -39,7 +39,7 @@ def extract_asin(document):
             return text
     return None
 
-def get_game_id(game_name, system_name):
+def get_game_id(internal_id, game_name, system_name):
     cleaned_game = clean_game_name(game_name)
     cleaned_system = clean_system_name(system_name)
     url = f"https://www.pricecharting.com/game/{cleaned_system}/{cleaned_game}"
@@ -51,6 +51,7 @@ def get_game_id(game_name, system_name):
         raise ValueError(f"Couldn't infer game URL: {url}")
 
     return {
+        'id': internal_id,
         'name': game_name,
         'console': system_name,
         'pricecharting_id': id,
@@ -60,7 +61,7 @@ def get_game_id(game_name, system_name):
     }
 
 def clean_game_name(original):
-    return original.lower().strip().replace(':', '').replace('.', '').replace("'", '%27').replace(' ', '-').replace('--', '-').replace('--', '-').replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace('/', '').strip()
+    return original.lower().strip().replace(':', '').replace('.', '').replace("'", '%27').replace(' ', '-').replace('--', '-').replace('--', '-').replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace('/', '').replace('#', '').strip()
 
 def clean_system_name(original):
     return original.lower().replace('new', '').strip().replace(' ', '-')
@@ -69,9 +70,9 @@ def main():
     failed = []
     retrieved = []
     for game in games:
-        game_name, _, system_name = game.rpartition(',')
+        inernal_id, game_name, system_name = game.split(',', maxsplit=3)
         try:
-            data = get_game_id(game_name.strip(), system_name.strip())
+            data = get_game_id(inernal_id.strip(), game_name.strip(), system_name.strip())
             retrieved.append(data)
         except ValueError as err:
             msg = f"Could not retrieve info: {err}"
