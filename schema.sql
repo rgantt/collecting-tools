@@ -13,7 +13,7 @@ CREATE TABLE physical_games (
 create table pricecharting_games (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-	pricecharting_id INTEGER,
+	pricecharting_id INTEGER UNIQUE,
 	name TEXT NOT NULL,
 	console TEXT NOT NULL,
 	url TEXT NOT NULL
@@ -38,10 +38,27 @@ CREATE TABLE pricecharting_prices (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 	retrieve_time TIMESTAMP,
-	pricecharting_game INTEGER NOT NULL,
-	new DECIMAL, 
-	loose DECIMAL,
-	complete DECIMAL,
+	pricecharting_id INTEGER NOT NULL,
+	condition TEXT,
+	price DECIMAL,
 
 	FOREIGN KEY (pricecharting_id) REFERENCES pricecharting_games (pricecharting_id)
 );
+
+CREATE VIEW IF NOT EXISTS latest_prices AS
+SELECT
+	g.name,
+	g.console,
+	max(p.retrieve_time) as retrieve_time,
+	p.price,
+	p.condition
+FROM physical_games g
+JOIN physical_games_pricecharting_games j
+	ON g.id = j.physical_game
+JOIN pricecharting_games z
+	ON j.pricecharting_game = z.id
+JOIN pricecharting_prices p
+	ON z.pricecharting_id = p.pricecharting_id
+WHERE p.condition = g.condition
+GROUP BY g.id
+ORDER BY g.name ASC;

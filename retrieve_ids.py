@@ -78,7 +78,7 @@ def main():
             msg = f"Could not retrieve info: {err}"
             failed.append({'game': game, 'message': msg})
     print(json.dumps(retrieved, indent=2))
-    print(json.dumps(failed, indent=2))
+    print(json.dumps(failed, indent=2), file=sys.stderr)
 
 if __name__ == '__main__':
     main()

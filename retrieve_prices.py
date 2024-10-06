@@ -43,15 +43,20 @@ def get_game_prices(id):
 def main():
     failed = []
     price_data = []
+    i = 0
+    tot = len(games)
     for game_id in games:
         try:
             prices = get_game_prices(game_id)
             price_data.append(prices)
+            i += 1
+            if (i % 100 == 0):
+                print(f"Retrieved {i}/{tot} prices...", file=sys.stderr)
         except ValueError as err:
             msg = f"Could not retrieve pricing info: {err}"
             failed.append({'game': game_id, 'message': msg})
     print(json.dumps(price_data, indent=2))
-    print(json.dumps(failed, indent=2))
+    print(json.dumps(failed, indent=2), file=sys.stderr)
 
 if __name__ == '__main__':
     main()

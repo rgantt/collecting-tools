@@ -7,9 +7,9 @@ dbname=sys.argv[2]
 
 statement="""
 INSERT INTO pricecharting_prices 
-(pricecharting_id, retrieve_time, new, loose, complete) 
+(pricecharting_id, retrieve_time, price, condition)
 VALUES 
-(?,?,?,?,?)
+(?,?,?,?)
 """
 
 def main():
@@ -19,7 +19,9 @@ def main():
     records = []
     for record in games:
         prices = record['prices']
-        records.append((record['game'], record['time'], prices['new'], prices['loose'], prices['complete'],))
+        records.append((record['game'], record['time'], prices['new'], 'new',))
+        records.append((record['game'], record['time'], prices['loose'], 'loose',))
+        records.append((record['game'], record['time'], prices['complete'], 'complete',))
 
     con = sqlite3.connect(dbname)
     with con:
