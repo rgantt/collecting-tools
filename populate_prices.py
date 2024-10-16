@@ -26,7 +26,7 @@ def main():
     con = sqlite3.connect(dbname)
     with con:
         con.executemany(statement, records)
-    print("Committed")
+    print(f"Committed {len(games)} records.")
     con.close()
 
 if __name__ == '__main__':

@@ -47,6 +47,9 @@ def extract_asin(document):
 def get_game_id(internal_id, game_name, system_name):
     cleaned_game = clean_game_name(game_name)
     cleaned_system = clean_system_name(system_name)
+
+    print(f"{game_name} on {system_name}...", file=sys.stderr)
+
     url = f"https://www.pricecharting.com/game/{cleaned_system}/{cleaned_game}"
     response = requests.get(url)
     document = BeautifulSoup(response.content, 'html.parser')
@@ -77,13 +80,16 @@ def get_games():
         cursor = con.execute(statement, ())
         res = cursor.fetchall()
     con.close()
-    print(f"{res}")
-    exit(-1)
     return res
 
 def main():
     # Find all of the games with missing pricecharting identifiers
     games = get_games()
+    if (len(games) <= 0):
+        print("No unidentified games found.", file=sys.stderr)
+        exit()
+
+    print(f"Retrieving identifiers for {len(games)} games:", file=sys.stderr)
 
     failed = []
     retrieved = []
@@ -94,9 +100,11 @@ def main():
         except ValueError as err:
             msg = f"Could not retrieve info: {err}"
             failed.append({'game': id, 'name': name, 'message': msg})
-        break
     print(json.dumps(retrieved, indent=2))
-    print(json.dumps(failed, indent=2), file=sys.stderr)
+
+    if (len(failed) > 0):
+        print("Failures:", file=sys.stderr)
+        print(json.dumps(failed, indent=2), file=sys.stderr)
 
 if __name__ == '__main__':
     main()
