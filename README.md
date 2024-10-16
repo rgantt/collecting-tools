@@ -42,12 +42,13 @@ Grab price observations for all of the games in your database--these records are
 
 ```bash
 % export DB_PATH=games.db
+% export TIME=$(date +%s)
 
 # Retrieve the prices (loose, used, new) based on the ids
-% python3 -u retrieve_prices.py $DB_PATH > output/prices.json
+% python3 -u retrieve_prices.py $DB_PATH > output/prices.${TIME}.json
 
 # Insert (a new set of timestamped price observations)
-% python3 -u populate_prices.py output/prices.json $DB_PATH
+% python3 -u populate_prices.py output/prices.${TIME}.json $DB_PATH
 ```
 
 Because the prices don't really change that much, it would be cool to have a batch job that grabs a handful of randomly-selected titles and grabs their prices on a daily or weekly basis.
