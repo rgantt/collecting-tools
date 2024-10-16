@@ -1,14 +1,17 @@
+import sqlite3
 import requests
 import datetime
 from bs4 import BeautifulSoup
 import json
 import sys
 
-# This must contain a list of pricecharting identifiers (probably extracted via retrieve-ids.py)
-filename=sys.argv[1]
+dbname=sys.argv[1]
 
-with open(filename) as file:
-    games = [line.rstrip() for line in file]
+statement="""
+SELECT pricecharting_id
+FROM pricecharting_games
+ORDER BY name ASC
+"""
 
 def extract_price(document, selector):
     price_element = document.select_one(selector)
@@ -40,17 +43,30 @@ def get_game_prices(id):
         'prices': prices
     }
 
+
+def retrieve_games():
+    con = sqlite3.connect(dbname)
+    with con:
+        cursor = con.execute(statement, ())
+        res = cursor.fetchall()
+    con.close()
+    return [x[0] for x in res]
+
+
 def main():
     failed = []
     price_data = []
     i = 0
+
+    games = retrieve_games()
     tot = len(games)
+
     for game_id in games:
         try:
             prices = get_game_prices(game_id)
             price_data.append(prices)
             i += 1
-            if (i % 100 == 0):
+            if (i % 50 == 0):
                 print(f"Retrieved {i}/{tot} prices...", file=sys.stderr)
         except ValueError as err:
             msg = f"Could not retrieve pricing info: {err}"

@@ -1,3 +1,4 @@
+import sqlite3
 import requests
 from bs4 import BeautifulSoup
 import json
@@ -5,10 +6,14 @@ import sys
 import re
 
 # This must contain a list of "PriceCharting-compatible" names (which are aggravatingly different than title names)
-filename=sys.argv[1]
+dbname=sys.argv[1]
 
-with open(filename) as file:
-    games = [line.rstrip() for line in file]
+statement="""
+SELECT id, name, console
+FROM pricecharting_games
+WHERE pricecharting_id IS NULL
+ORDER BY name ASC
+"""
 
 def extract_id(document):
     element = document.select_one('#product_name')
@@ -66,17 +71,30 @@ def clean_game_name(original):
 def clean_system_name(original):
     return original.lower().replace('new', '').strip().replace(' ', '-')
 
+def get_games():
+    con = sqlite3.connect(dbname)
+    with con:
+        cursor = con.execute(statement, ())
+        res = cursor.fetchall()
+    con.close()
+    print(f"{res}")
+    exit(-1)
+    return res
+
 def main():
+    # Find all of the games with missing pricecharting identifiers
+    games = get_games()
+
     failed = []
     retrieved = []
-    for game in games:
-        inernal_id, game_name, system_name = game.split(',', maxsplit=3)
+    for id, name, console in games:
         try:
-            data = get_game_id(inernal_id.strip(), game_name.strip(), system_name.strip())
+            data = get_game_id(id, name, console)
             retrieved.append(data)
         except ValueError as err:
             msg = f"Could not retrieve info: {err}"
-            failed.append({'game': game, 'message': msg})
+            failed.append({'game': id, 'name': name, 'message': msg})
+        break
     print(json.dumps(retrieved, indent=2))
     print(json.dumps(failed, indent=2), file=sys.stderr)
 
