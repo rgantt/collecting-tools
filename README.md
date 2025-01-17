@@ -34,7 +34,11 @@ Use this if you've added a few games to `physical_games` and now you want to res
 % python3 -u populate_ids.py output/ids.delta.json $DB_PATH
 ```
 
-Note that you should expect some failures here occasionally since the pricecharting titles are usually significantly different than the spine titles for most games. Failures will be appended to `input/games.delta.txt` and you'll want to review them, correct them, and re-run the process.
+Note that you should expect some failures here occasionally since the pricecharting titles are usually significantly different than the spine titles for most games. Failures will be appended to `input/games.delta.txt`.
+
+Usually this is just a quirk between how pricecharting names their games and how developers do. Correct them by updating values in the `name` and `console` columns in the `pricecharting_games` table as required, and then re-run the `retrieve_ids.py` script.
+
+Cor
 
 ## Capturing prices
 
