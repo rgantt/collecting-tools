@@ -5,15 +5,7 @@ import json
 import sys
 import re
 
-# This must contain a list of "PriceCharting-compatible" names (which are aggravatingly different than title names)
 dbname=sys.argv[1]
-
-statement="""
-SELECT id, name, console
-FROM pricecharting_games
-WHERE pricecharting_id IS NULL
-ORDER BY name ASC
-"""
 
 def extract_id(document):
     element = document.select_one('#product_name')
@@ -75,12 +67,49 @@ def clean_system_name(original):
     return original.lower().replace('new', '').strip().replace(' ', '-')
 
 def get_games():
+    statement = """
+    SELECT id, name, console
+    FROM pricecharting_games
+    WHERE pricecharting_id IS NULL
+    ORDER BY name ASC
+    """
+    
     con = sqlite3.connect(dbname)
     with con:
         cursor = con.execute(statement, ())
         res = cursor.fetchall()
     con.close()
     return res
+
+def insert_game_ids(dbname, games):
+    """
+    Insert a batch of game IDs into the database.
+    
+    Args:
+        dbname (str): Path to the SQLite database
+        games (list): List of game dictionaries with pricecharting_id, url, id, name, and console keys
+    
+    Returns:
+        int: Number of records inserted
+    """
+    statement = """
+    REPLACE INTO pricecharting_games 
+    (pricecharting_id, url, id, name, console) 
+    VALUES (?,?,?,?,?)
+    """
+    
+    updates = [
+        (record['pricecharting_id'], record['url'], record['id'], 
+         record['name'], record['console']) for record in games
+    ]
+
+    try:
+        with sqlite3.connect(dbname) as con:
+            con.executemany(statement, updates)
+        return len(games)
+    except sqlite3.Error as e:
+        print(f"Database error: {e}", file=sys.stderr)
+        raise
 
 def main():
     # Find all of the games with missing pricecharting identifiers
@@ -100,9 +129,16 @@ def main():
         except ValueError as err:
             msg = f"Could not retrieve info: {err}"
             failed.append({'game': id, 'name': name, 'message': msg})
-    print(json.dumps(retrieved, indent=2))
+    
+    # Save retrieved records to database
+    if retrieved:
+        try:
+            records_inserted = insert_game_ids(dbname, retrieved)
+            print(f"Saved {records_inserted} records to database", file=sys.stderr)
+        except sqlite3.Error as e:
+            print(f"Failed to save records to database: {e}", file=sys.stderr)
 
-    if (len(failed) > 0):
+    if failed:
         print("Failures:", file=sys.stderr)
         print(json.dumps(failed, indent=2), file=sys.stderr)
 
