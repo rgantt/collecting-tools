@@ -7,9 +7,10 @@ import sys
 
 dbname=sys.argv[1]
 
-statement="""
+statement = """
 SELECT pricecharting_id
-FROM pricecharting_games
+FROM latest_prices
+WHERE retrieve_time < datetime('now', '-3 days')
 ORDER BY name ASC
 """
 
@@ -52,32 +53,77 @@ def retrieve_games():
     con.close()
     return [x[0] for x in res]
 
+def insert_price_records(dbname, games):
+    """
+    Insert a batch of price records into the database.
+    
+    Args:
+        dbname (str): Path to the SQLite database
+        games (list): List of game dictionaries with 'game', 'time', and 'prices' keys
+    
+    Returns:
+        int: Number of records inserted
+    """
+    statement = """
+    INSERT INTO pricecharting_prices 
+    (pricecharting_id, retrieve_time, price, condition)
+    VALUES 
+    (?,?,?,?)
+    """
+    
+    records = []
+    for record in games:
+        prices = record['prices']
+        records.append((record['game'], record['time'], prices['new'], 'new'))
+        records.append((record['game'], record['time'], prices['loose'], 'loose'))
+        records.append((record['game'], record['time'], prices['complete'], 'complete'))
+
+    try:
+        with sqlite3.connect(dbname) as con:
+            con.executemany(statement, records)
+        return len(games)
+    except sqlite3.Error as e:
+        print(f"Database error: {e}", file=sys.stderr)
+        raise
 
 def main():
     failed = []
     price_data = []
-    i = 0
 
     games = retrieve_games()
-    if (len(games) <= 0):
+    if not games:
         print("No games found.", file=sys.stderr)
-        exit()
+        sys.exit(1)
 
-    print(f"Retrieving prices for {len(games)} games:", file=sys.stderr)
-    for game_id in games:
+    print(f"Retrieving prices for {len(games)} games...", file=sys.stderr)
+    for count, game_id in enumerate(games, 1):
         try:
             prices = get_game_prices(game_id)
             price_data.append(prices)
-            i += 1
-            if (i % 50 == 0):
-                print(f"Retrieved {i}/{len(games)} prices...", file=sys.stderr)
+            if count % 50 == 0:
+                print(f"Progress: {count}/{len(games)} prices retrieved", file=sys.stderr)
+                # Optionally commit to database in batches
+                try:
+                    insert_price_records(dbname, price_data)
+                    price_data = []  # Clear after successful insert
+                except sqlite3.Error as e:
+                    print(f"Failed to save batch to database: {e}", file=sys.stderr)
         except ValueError as err:
             msg = f"Could not retrieve pricing info: {err}"
             failed.append({'game': game_id, 'message': msg})
-    print(json.dumps(price_data, indent=2))
-
-    if (len(failed) > 0):
-        print("Failures:", file=sys.stderr)
+            print(f"Error on game {game_id}: {err}", file=sys.stderr)
+    
+    # Insert any remaining records
+    if price_data:
+        try:
+            insert_price_records(dbname, price_data)
+        except sqlite3.Error as e:
+            print(f"Failed to save final batch to database: {e}", file=sys.stderr)
+    
+    print(f"Completed: {len(price_data)}/{len(games)} prices retrieved", file=sys.stderr)
+    
+    if failed:
+        print(f"\nFailures ({len(failed)}):", file=sys.stderr)
         print(json.dumps(failed, indent=2), file=sys.stderr)
 
 if __name__ == '__main__':

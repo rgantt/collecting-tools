@@ -10,6 +10,19 @@ CREATE TABLE physical_games (
     condition TEXT
 );
 
+CREATE TABLE backup_files (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+	path TEXT NOT NULL
+);
+
+CREATE TABLE physical_games_backup_files (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+	physical_game INTEGER NOT NULL,
+	backup_file INTEGER NOT NULL
+);
+
 create table pricecharting_games (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -49,6 +62,7 @@ CREATE VIEW IF NOT EXISTS latest_prices AS
 SELECT
 	g.name,
 	g.console,
+	z.pricecharting_id,
 	max(p.retrieve_time) as retrieve_time,
 	p.price,
 	p.condition
