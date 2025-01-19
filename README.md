@@ -5,20 +5,13 @@ Assume you have a `games.db` SQLite database with `.schema` matching the content
 This is the primary way to add a game to your collection:
 
 ```bash
-% export DB_PATH=games.db
-
 # Add a game to your collection--all fields required
-% python3 collection.py \
-  --db $DB_PATH \
-  --title 'Pokemon Sword and Shield Double Pack' \
-  --console "Nintendo Switch" \
-  --condition "CIB" \
-  --price 95 \
-  --source "reddit" \
-  --date "2024-08-26"
+% python3 -u add.py games.db
 ```
 
-Note that this will not (currently) attempt to populate a mapping between your game and a pricecharting game. For now, you still need to follow the "Resolving identifiers" process below to establish that. Until you do so, the "retrieving prices" process will skip this game.
+This opens up a prompt to fill in the details of the game you're adding (and you can add multiple games at once).
+
+For now, you still need to follow the "Resolving identifiers" process below to establish that. Until you do so, the "retrieving prices" process will skip this game.
 
 ## Resolving identifiers
 
