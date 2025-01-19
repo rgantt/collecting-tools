@@ -55,7 +55,6 @@ def insert_price_records(games):
         (record['game'], record['time'], record['prices'][condition], condition)
         for record in games
         for condition, price in record['prices'].items()
-        if price is not None
     ]
 
     try:
@@ -83,9 +82,10 @@ def process_batch(games):
 def main():
     games = retrieve_games()
     if not games:
-        print("No games found.")
+        print("No games found with prices older than 3 days.")
         sys.exit(0)
 
+    print(f"{games}")
     print(f"Retrieving prices for {len(games)} games...")
     all_failed = []
     processed = 0
