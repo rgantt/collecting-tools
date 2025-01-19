@@ -25,20 +25,21 @@ Note that this will not (currently) attempt to populate a mapping between your g
 Use this if you've added a few games to `physical_games` and now you want to resolve identifiers so you can start to grab prices:
 
 ```bash
-% export DB_PATH=games.db
-
 # Retrieve the PC ids for the games
-% python3 -u retrieve_ids.py $DB_PATH > output/ids.delta.json
-
-# Update
-% python3 -u populate_ids.py output/ids.delta.json $DB_PATH
+% python3 -u retrieve_ids.py games.db
 ```
 
-Note that you should expect some failures here occasionally since the pricecharting titles are usually significantly different than the spine titles for most games. Failures will be appended to `input/games.delta.txt`.
+You should expect some failures here occasionally: pricecharting titles can be different than spine titles for most games.
 
-Usually this is just a quirk between how pricecharting names their games and how developers do. Correct them by updating values in the `name` and `console` columns in the `pricecharting_games` table as required, and then re-run the `retrieve_ids.py` script.
+Failures will be shown on the console; correct them by updating values in the `name` and `console` columns in the `pricecharting_games` table as required, and then re-run the `retrieve_ids.py` script. Successes will be written to the database.
 
-Cor
+### Identifying failures
+
+Use this query to identify the games that failed:
+
+```sql
+SELECT * FROM pricecharting_games WHERE pricecharting_id IS NULL
+```
 
 ## Capturing prices
 
@@ -48,3 +49,5 @@ Grab price observations for all of the games in your database--these records are
 # Retrieve the prices (loose, used, new) based on the ids
 % python3 -u retrieve_prices.py games.db
 ```
+
+This will only retrieve prices for games that have not been retrieved in the last 3 days.
