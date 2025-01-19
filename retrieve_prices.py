@@ -5,126 +5,109 @@ from bs4 import BeautifulSoup
 import json
 import sys
 
-dbname=sys.argv[1]
-
-statement = """
-SELECT pricecharting_id
-FROM latest_prices
-WHERE retrieve_time < datetime('now', '-3 days')
-ORDER BY name ASC
-"""
+BATCH_SIZE = 50
+DB_PATH = sys.argv[1]
 
 def extract_price(document, selector):
-    price_element = document.select_one(selector)
-    if price_element:
+    if price_element := document.select_one(selector):
         price_text = price_element.text.strip()
         if price_text.startswith('$'):
             price_text = price_text[1:]
         price_text = price_text.replace(',', '')
-        if price_text == '-':
-            return None
-        else:
-            return float(price_text)
+        return None if price_text == '-' else float(price_text)
     return None
 
-def get_game_prices(id):
-    url = f"https://www.pricecharting.com/game/{id}"
-    response = requests.get(url)
-    document = BeautifulSoup(response.content, 'html.parser')
+def get_game_prices(game_id):
+    url = f"https://www.pricecharting.com/game/{game_id}"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        document = BeautifulSoup(response.content, 'html.parser')
 
-    prices = {
-        'complete': extract_price(document, '#complete_price > span.price.js-price'),
-        'new': extract_price(document, '#new_price > span.price.js-price'),
-        'loose': extract_price(document, '#used_price > span.price.js-price')
-    }
-
-    return {
-        'time': datetime.datetime.now().isoformat(),
-        'game': id,
-        'prices': prices
-    }
-
+        return {
+            'time': datetime.datetime.now().isoformat(),
+            'game': game_id,
+            'prices': {
+                'complete': extract_price(document, '#complete_price > span.price.js-price'),
+                'new': extract_price(document, '#new_price > span.price.js-price'),
+                'loose': extract_price(document, '#used_price > span.price.js-price')
+            }
+        }
+    except requests.RequestException as e:
+        raise ValueError(f"HTTP request failed: {e}")
 
 def retrieve_games():
-    con = sqlite3.connect(dbname)
-    with con:
-        cursor = con.execute(statement, ())
-        res = cursor.fetchall()
-    con.close()
-    return [x[0] for x in res]
-
-def insert_price_records(dbname, games):
-    """
-    Insert a batch of price records into the database.
-    
-    Args:
-        dbname (str): Path to the SQLite database
-        games (list): List of game dictionaries with 'game', 'time', and 'prices' keys
-    
-    Returns:
-        int: Number of records inserted
-    """
-    statement = """
-    INSERT INTO pricecharting_prices 
-    (pricecharting_id, retrieve_time, price, condition)
-    VALUES 
-    (?,?,?,?)
-    """
-    
-    records = []
-    for record in games:
-        prices = record['prices']
-        records.append((record['game'], record['time'], prices['new'], 'new'))
-        records.append((record['game'], record['time'], prices['loose'], 'loose'))
-        records.append((record['game'], record['time'], prices['complete'], 'complete'))
-
     try:
-        with sqlite3.connect(dbname) as con:
-            con.executemany(statement, records)
-        return len(games)
+        with sqlite3.connect(DB_PATH) as con:
+            cursor = con.execute("""
+                SELECT pricecharting_id
+                FROM latest_prices
+                WHERE retrieve_time < datetime('now', '-3 days')
+                ORDER BY name ASC
+            """)
+            return [row[0] for row in cursor]
     except sqlite3.Error as e:
-        print(f"Database error: {e}", file=sys.stderr)
-        raise
-
-def main():
-    failed = []
-    price_data = []
-
-    games = retrieve_games()
-    if not games:
-        print("No games found.", file=sys.stderr)
+        print(f"Database error: {e}")
         sys.exit(1)
 
-    print(f"Retrieving prices for {len(games)} games...", file=sys.stderr)
-    for count, game_id in enumerate(games, 1):
+def insert_price_records(games):
+    records = [
+        (record['game'], record['time'], record['prices'][condition], condition)
+        for record in games
+        for condition, price in record['prices'].items()
+        if price is not None
+    ]
+
+    try:
+        with sqlite3.connect(DB_PATH) as con:
+            con.executemany("""
+                INSERT INTO pricecharting_prices 
+                (pricecharting_id, retrieve_time, price, condition)
+                VALUES (?,?,?,?)
+            """, records)
+        return len(games)
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        raise
+
+def process_batch(games):
+    successful, failed = [], []
+    for game_id in games:
         try:
-            prices = get_game_prices(game_id)
-            price_data.append(prices)
-            if count % 50 == 0:
-                print(f"Progress: {count}/{len(games)} prices retrieved", file=sys.stderr)
-                # Optionally commit to database in batches
-                try:
-                    insert_price_records(dbname, price_data)
-                    price_data = []  # Clear after successful insert
-                except sqlite3.Error as e:
-                    print(f"Failed to save batch to database: {e}", file=sys.stderr)
+            successful.append(get_game_prices(game_id))
         except ValueError as err:
-            msg = f"Could not retrieve pricing info: {err}"
-            failed.append({'game': game_id, 'message': msg})
-            print(f"Error on game {game_id}: {err}", file=sys.stderr)
+            failed.append({'game': game_id, 'message': f"Could not retrieve pricing info: {err}"})
+            print(f"Error on game {game_id}: {err}")
+    return successful, failed
+
+def main():
+    games = retrieve_games()
+    if not games:
+        print("No games found.")
+        sys.exit(0)
+
+    print(f"Retrieving prices for {len(games)} games...")
+    all_failed = []
+    processed = 0
+
+    for i in range(0, len(games), BATCH_SIZE):
+        successful, failed = process_batch(games[i:i + BATCH_SIZE])
+        
+        if successful:
+            try:
+                insert_price_records(successful)
+                processed += len(successful)
+                print(f"Progress: {processed}/{len(games)} prices retrieved")
+            except sqlite3.Error as e:
+                print(f"Failed to save batch to database: {e}")
+        
+        all_failed.extend(failed)
     
-    # Insert any remaining records
-    if price_data:
-        try:
-            insert_price_records(dbname, price_data)
-        except sqlite3.Error as e:
-            print(f"Failed to save final batch to database: {e}", file=sys.stderr)
+    print(f"Completed: {processed}/{len(games)} prices retrieved")
     
-    print(f"Completed: {len(price_data)}/{len(games)} prices retrieved", file=sys.stderr)
-    
-    if failed:
-        print(f"\nFailures ({len(failed)}):", file=sys.stderr)
-        print(json.dumps(failed, indent=2), file=sys.stderr)
+    if all_failed:
+        print(f"\nFailures ({len(all_failed)}):")
+        print(json.dumps(all_failed, indent=2))
 
 if __name__ == '__main__':
     main()
