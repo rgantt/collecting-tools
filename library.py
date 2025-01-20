@@ -18,6 +18,7 @@ class GameLibrary:
         self.register("Add a game to your library", self.add_game)
         self.register("Retrieve latest prices", self.retrieve_prices)
         self.register("Retrieve missing game IDs", self.retrieve_ids)
+        self.register("Edit existing game", self.edit_game)
 
     def register(self, description: str, command: Callable):
         self._commands.append((description, command))
@@ -150,6 +151,111 @@ class GameLibrary:
         if failed:
             print("\nFailures:")
             print(json.dumps(failed, indent=2))
+
+    def edit_game(self):
+        try:
+            search_name = input('Enter game name to search for: ')
+        except EOFError:
+            print("\nInput cancelled")
+            return
+
+        try:
+            with sqlite3.connect(self.db_path) as con:
+                cursor = con.execute("""
+                    SELECT 
+                        p.id,
+                        p.name,
+                        p.console,
+                        p.condition,
+                        p.source,
+                        p.price,
+                        p.acquisition_date
+                    FROM physical_games p
+                    WHERE p.name LIKE ?
+                    ORDER BY p.name
+                """, (f"%{search_name}%",))
+                
+                games = cursor.fetchall()
+                
+                if not games:
+                    print("No games found matching that name.")
+                    return
+
+                print("\nFound games:")
+                for i, (id, name, console, condition, source, price, date) in enumerate(games):
+                    print(f"[{i}] {name} ({console}) - {condition} condition, {price} from {source} on {date}")
+
+                try:
+                    choice = int(input('\nSelect game to edit (or Ctrl+D to cancel): '))
+                    if not 0 <= choice < len(games):
+                        print("Invalid selection")
+                        return
+                except (ValueError, EOFError):
+                    print("\nInput cancelled")
+                    return
+
+                game_id = games[choice][0]
+                print("\nEnter new values (or press Enter to keep current value)")
+                
+                try:
+                    updates = {}
+                    name = input(f'Name [{games[choice][1]}]: ').strip()
+                    if name:
+                        updates['name'] = name
+                    
+                    console = input(f'Console [{games[choice][2]}]: ').strip()
+                    if console:
+                        updates['console'] = console
+                    
+                    condition = input(f'Condition [{games[choice][3]}]: ').strip()
+                    if condition:
+                        updates['condition'] = condition
+                    
+                    source = input(f'Source [{games[choice][4]}]: ').strip()
+                    if source:
+                        updates['source'] = source
+                    
+                    price = input(f'Price [{games[choice][5]}]: ').strip()
+                    if price:
+                        updates['price'] = price
+                    
+                    date = input(f'Date [{games[choice][6]}]: ').strip()
+                    if date:
+                        updates['acquisition_date'] = date
+
+                except EOFError:
+                    print("\nInput cancelled")
+                    return
+
+                if not updates:
+                    print("No changes made")
+                    return
+
+                set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+                values = list(updates.values()) + [game_id]
+                
+                cursor.execute(f"""
+                    UPDATE physical_games
+                    SET {set_clause}
+                    WHERE id = ?
+                """, values)
+
+                if updates.get('name') or updates.get('console'):
+                    cursor.execute("""
+                        UPDATE pricecharting_games
+                        SET name = COALESCE(?, name),
+                            console = COALESCE(?, console)
+                        WHERE id IN (
+                            SELECT pricecharting_game
+                            FROM physical_games_pricecharting_games
+                            WHERE physical_game = ?
+                        )
+                    """, (updates.get('name'), updates.get('console'), game_id))
+
+                print("Changes saved")
+
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description='Add games to your library')
