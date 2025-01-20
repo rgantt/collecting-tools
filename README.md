@@ -6,7 +6,7 @@ This is the primary way to add a game to your collection:
 
 ```bash
 # Add a game to your collection--all fields required
-% python3 -u add.py games.db
+% python3 library.py -d games.db
 ```
 
 This opens up a prompt to fill in the details of the game you're adding (and you can add multiple games at once).
