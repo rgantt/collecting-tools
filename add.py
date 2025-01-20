@@ -7,7 +7,7 @@ from typing import Callable, List
 class GameLibrary:
     def __init__(self, db_path: str):
         self.db_path = db_path
-        self.commands: List[tuple[str, Callable]] = []
+        self._commands: List[tuple[str, Callable]] = []
         self.register_commands()
 
     def register_commands(self):
@@ -15,13 +15,20 @@ class GameLibrary:
         self.register("Add a game to your library", self.add_game)
 
     def register(self, description: str, command: Callable):
-        self.commands.append((description, command))
+        self._commands.append((description, command))
 
     def display_commands(self):
         print("\nAvailable commands:")
-        for num, (desc, _) in enumerate(self.commands):
+        for num, (desc, _) in enumerate(self._commands):
             print(f"[{num}] - {desc}")
         print()
+
+    def execute_command(self, number: int):
+        if 0 <= number < len(self._commands):
+            _, command = self._commands[number]
+            command()
+            return True
+        return False
 
     def exit(self):
         raise SystemExit
@@ -29,14 +36,18 @@ class GameLibrary:
     def add_game(self):
         print("We'll add game to the library interactively. I need some info from you.")
 
-        game_data = {
-            'title': input('Title: '),
-            'console': input('Console: '),
-            'condition': input('Condition: '),
-            'source': input('Source: '),
-            'price': input('Price: '),
-            'date': input('Date: ')
-        }
+        try:
+            game_data = {
+                'title': input('Title: '),
+                'console': input('Console: '),
+                'condition': input('Condition: '),
+                'source': input('Source: '),
+                'price': input('Price: '),
+                'date': input('Date: ')
+            }
+        except EOFError:
+            print("\nInput cancelled")
+            return
 
         try:
             with sqlite3.connect(self.db_path) as con:
@@ -67,30 +78,21 @@ class GameLibrary:
         except sqlite3.Error as e:
             print(f"Database error: {e}")
 
-    def run(self):
-        
-        while True:
-            self.display_commands()
-
-            try:
-                action = int(input('What would you like to do? '))
-                if not 0 <= action < len(self.commands):
-                    print(f"{action} is not a valid option")
-                    continue
-
-                _, command = self.commands[action]
-                command()
-
-            except ValueError:
-                print("Please enter a valid number")
-
 def main():
     parser = argparse.ArgumentParser(description='Add games to your library')
     parser.add_argument('-d', '--db', required=True, help='Path to SQLite database')
     args = parser.parse_args()
 
     library = GameLibrary(args.db)
-    library.run()
+    
+    while True:
+        library.display_commands()
+        try:
+            action = int(input('What would you like to do? '))
+            if not library.execute_command(action):
+                print(f"{action} is not a valid option")
+        except ValueError:
+            print("Please enter a valid number")
 
 if __name__ == '__main__':
     main()
