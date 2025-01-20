@@ -6,12 +6,45 @@ from typing import Callable, List
 import json
 from price_retrieval import retrieve_games, process_batch, insert_price_records
 from id_retrieval import retrieve_games, get_game_id, insert_game_ids
+from datetime import datetime
 
 class GameLibrary:
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._commands: List[tuple[str, Callable]] = []
         self.register_commands()
+
+    def _validate_date(self, date_str: str) -> bool:
+        """Validate that a string is a proper ISO-8601 date (YYYY-MM-DD)."""
+        try:
+            datetime.strptime(date_str, '%Y-%m-%d')
+            return True
+        except ValueError:
+            return False
+
+    def _get_valid_date(self, prompt: str, current_value: str = None) -> str:
+        """Get a valid ISO-8601 date from user input."""
+        while True:
+            display = f" [{current_value}]" if current_value else ""
+            try:
+                date_input = input(f"{prompt}{display}: ").strip()
+                
+                # Allow empty input when editing
+                if current_value and not date_input:
+                    return current_value
+                
+                if not date_input:
+                    print("Date is required. Format: YYYY-MM-DD")
+                    continue
+                
+                if not self._validate_date(date_input):
+                    print("Invalid date format. Please use YYYY-MM-DD (e.g., 2024-03-15)")
+                    continue
+                
+                return date_input
+            
+            except EOFError:
+                raise
 
     def register_commands(self):
         self.register("Exit", self.exit)
@@ -49,7 +82,7 @@ class GameLibrary:
                 'condition': input('Condition: '),
                 'source': input('Source: '),
                 'price': input('Price: '),
-                'date': input('Date: ')
+                'date': self._get_valid_date('Date')
             }
         except EOFError:
             print("\nInput cancelled")
@@ -219,8 +252,8 @@ class GameLibrary:
                     if price:
                         updates['price'] = price
                     
-                    date = input(f'Date [{games[choice][6]}]: ').strip()
-                    if date:
+                    date = self._get_valid_date('Date', games[choice][6])
+                    if date != games[choice][6]:
                         updates['acquisition_date'] = date
 
                 except EOFError:

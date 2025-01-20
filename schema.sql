@@ -1,7 +1,7 @@
 CREATE TABLE physical_games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    acquisition_date TIMESTAMP,
+    acquisition_date DATE NOT NULL CHECK (acquisition_date IS strftime('%Y-%m-%d', acquisition_date)),
     source TEXT,
     price DECIMAL,
     name TEXT NOT NULL,
