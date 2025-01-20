@@ -5,6 +5,7 @@ import sqlite3
 from typing import Callable, List
 import json
 from price_retrieval import retrieve_games, process_batch, insert_price_records
+from id_retrieval import retrieve_games, get_game_id, insert_game_ids
 
 class GameLibrary:
     def __init__(self, db_path: str):
@@ -16,6 +17,7 @@ class GameLibrary:
         self.register("Exit", self.exit)
         self.register("Add a game to your library", self.add_game)
         self.register("Retrieve latest prices", self.retrieve_prices)
+        self.register("Retrieve missing game IDs", self.retrieve_ids)
 
     def register(self, description: str, command: Callable):
         self._commands.append((description, command))
@@ -118,6 +120,36 @@ class GameLibrary:
         if all_failed:
             print(f"\nFailures ({len(all_failed)}):")
             print(json.dumps(all_failed, indent=2))
+
+    def retrieve_ids(self):
+        games = retrieve_games(self.db_path)
+        if not games:
+            print("No unidentified games found.")
+            return
+
+        print(f"Retrieving identifiers for {len(games)} games:")
+
+        failed = []
+        retrieved = []
+        for id, name, console in games:
+            try:
+                print(f"{name} on {console}...")
+                data = get_game_id(id, name, console)
+                retrieved.append(data)
+            except ValueError as err:
+                msg = f"Could not retrieve info: {err}"
+                failed.append({'game': id, 'name': name, 'message': msg})
+        
+        if retrieved:
+            try:
+                records_inserted = insert_game_ids(retrieved, self.db_path)
+                print(f"Saved {records_inserted} records to database")
+            except sqlite3.Error as e:
+                print(f"Failed to save records to database: {e}")
+
+        if failed:
+            print("\nFailures:")
+            print(json.dumps(failed, indent=2))
 
 def main():
     parser = argparse.ArgumentParser(description='Add games to your library')
