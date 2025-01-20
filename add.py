@@ -135,6 +135,9 @@ def main():
 
         except ValueError:
             print("Please enter a valid number")
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye!")
+            break
 
 if __name__ == '__main__':
     main()
