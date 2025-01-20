@@ -3,6 +3,8 @@
 import argparse
 import sqlite3
 from typing import Callable, List
+import json
+from price_retrieval import retrieve_games, process_batch, insert_price_records
 
 class GameLibrary:
     def __init__(self, db_path: str):
@@ -13,6 +15,7 @@ class GameLibrary:
     def register_commands(self):
         self.register("Exit", self.exit)
         self.register("Add a game to your library", self.add_game)
+        self.register("Retrieve latest prices", self.retrieve_prices)
 
     def register(self, description: str, command: Callable):
         self._commands.append((description, command))
@@ -78,6 +81,44 @@ class GameLibrary:
         except sqlite3.Error as e:
             print(f"Database error: {e}")
 
+    def retrieve_prices(self):
+        try:
+            batch_size = int(input('Batch size (default 50): ') or '50')
+            max_prices = input('Maximum prices to retrieve (optional): ')
+            max_prices = int(max_prices) if max_prices else None
+        except (ValueError, EOFError):
+            print("\nInvalid input")
+            return
+
+        games = retrieve_games(self.db_path, max_prices)
+        if not games:
+            print("No games found needing price updates.")
+            return
+
+        print(f"Retrieving prices for {len(games)} games...")
+        all_failed = []
+        processed = 0
+
+        for i in range(0, len(games), batch_size):
+            batch = games[i:i + batch_size]
+            successful, failed = process_batch(batch)
+            
+            if successful:
+                try:
+                    insert_price_records(successful, self.db_path)
+                    processed += len(successful)
+                    print(f"Progress: {processed}/{len(games)} prices retrieved")
+                except sqlite3.Error as e:
+                    print(f"Failed to save batch to database: {e}")
+            
+            all_failed.extend(failed)
+        
+        print(f"Completed: {processed}/{len(games)} prices retrieved")
+        
+        if all_failed:
+            print(f"\nFailures ({len(all_failed)}):")
+            print(json.dumps(all_failed, indent=2))
+
 def main():
     parser = argparse.ArgumentParser(description='Add games to your library')
     parser.add_argument('-d', '--db', required=True, help='Path to SQLite database')
@@ -91,6 +132,7 @@ def main():
             action = int(input('What would you like to do? '))
             if not library.execute_command(action):
                 print(f"{action} is not a valid option")
+
         except ValueError:
             print("Please enter a valid number")
 
