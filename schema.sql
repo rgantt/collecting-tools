@@ -1,4 +1,6 @@
-CREATE TABLE physical_games (
+BEGIN TRANSACTION;
+
+CREATE TABLE IF NOT EXISTS physical_games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
 
     acquisition_date DATE NOT NULL CHECK (acquisition_date IS strftime('%Y-%m-%d', acquisition_date)),
@@ -9,34 +11,34 @@ CREATE TABLE physical_games (
     condition TEXT
 );
 
-CREATE TABLE backup_files (
+CREATE TABLE IF NOT EXISTS backup_files (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 	path TEXT NOT NULL
 );
 
-CREATE TABLE physical_games_backup_files (
+CREATE TABLE IF NOT EXISTS physical_games_backup_files (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 	physical_game INTEGER NOT NULL,
 	backup_file INTEGER NOT NULL
 );
 
-create table pricecharting_games (
+CREATE TABLE IF NOT EXISTS pricecharting_games (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 	pricecharting_id INTEGER UNIQUE,
 	name TEXT NOT NULL,
 	console TEXT NOT NULL,
-	url TEXT NOT NULL
+	url TEXT
 );
 
-create table pricecharting_games_upcs (
+CREATE TABLE IF NOT EXISTS pricecharting_games_upcs (
 	pricecharting_game INTEGER NOT NULL,
 	upc INTEGER NOT NULL
 );
 
-create table physical_games_pricecharting_games (
+CREATE TABLE IF NOT EXISTS physical_games_pricecharting_games (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 	physical_game INTEGER NOT NULL,
@@ -46,7 +48,7 @@ create table physical_games_pricecharting_games (
 	FOREIGN KEY (pricecharting_game) REFERENCES pricecharting_games (id)
 );
 
-CREATE TABLE pricecharting_prices (
+CREATE TABLE IF NOT EXISTS pricecharting_prices (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 	retrieve_time TIMESTAMP,
@@ -70,8 +72,10 @@ JOIN physical_games_pricecharting_games j
 	ON g.id = j.physical_game
 JOIN pricecharting_games z
 	ON j.pricecharting_game = z.id
-JOIN pricecharting_prices p
+LEFT JOIN pricecharting_prices p
 	ON z.pricecharting_id = p.pricecharting_id
-WHERE p.condition = g.condition
+	AND p.condition = g.condition
 GROUP BY g.id
 ORDER BY g.name ASC;
+
+COMMIT;

@@ -4,8 +4,10 @@ import argparse
 import sqlite3
 from typing import Callable, List
 import json
-from price_retrieval import retrieve_games, process_batch, insert_price_records
-from id_retrieval import retrieve_games, get_game_id, insert_game_ids
+from price_retrieval import retrieve_games as retrieve_games_for_prices
+from price_retrieval import process_batch, insert_price_records
+from id_retrieval import retrieve_games as retrieve_games_for_ids
+from id_retrieval import get_game_id, insert_game_ids
 from datetime import datetime
 
 class GameLibrary:
@@ -52,6 +54,7 @@ class GameLibrary:
         self.register("Retrieve latest prices", self.retrieve_prices)
         self.register("Retrieve missing game IDs", self.retrieve_ids)
         self.register("Edit existing game", self.edit_game)
+        self.register("Initialize new database", self.init_db)
 
     def register(self, description: str, command: Callable):
         self._commands.append((description, command))
@@ -126,7 +129,7 @@ class GameLibrary:
             print("\nInvalid input")
             return
 
-        games = retrieve_games(self.db_path, max_prices)
+        games = retrieve_games_for_prices(self.db_path, max_prices)
         if not games:
             print("No games found needing price updates.")
             return
@@ -156,7 +159,7 @@ class GameLibrary:
             print(json.dumps(all_failed, indent=2))
 
     def retrieve_ids(self):
-        games = retrieve_games(self.db_path)
+        games = retrieve_games_for_ids(self.db_path)
         if not games:
             print("No unidentified games found.")
             return
@@ -287,6 +290,29 @@ class GameLibrary:
 
                 print("Changes saved")
 
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+
+    def init_db(self):
+        """Initialize a new database with the schema."""
+        if input("This will initialize a new database. Are you sure? (y/N) ").lower() != 'y':
+            print("Cancelled")
+            return
+
+        try:
+            with open('schema.sql', 'r') as f:
+                schema = f.read()
+        except FileNotFoundError:
+            print("Error: Could not find schema.sql file")
+            return
+        except IOError as e:
+            print(f"Error reading schema file: {e}")
+            return
+
+        try:
+            with sqlite3.connect(self.db_path) as con:
+                con.executescript(schema)
+                print(f"Successfully initialized database at {self.db_path}")
         except sqlite3.Error as e:
             print(f"Database error: {e}")
 

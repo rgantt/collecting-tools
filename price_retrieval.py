@@ -37,6 +37,7 @@ def retrieve_games(db_path: str, max_prices: Optional[int] = None) -> List[str]:
         SELECT pricecharting_id
         FROM latest_prices
         WHERE retrieve_time < datetime('now', '-1 minutes')
+        OR retrieve_time IS NULL
         ORDER BY name ASC
     """
     
