@@ -6,7 +6,6 @@ CREATE TABLE physical_games (
     price DECIMAL,
     name TEXT NOT NULL,
     console TEXT NOT NULL,
-    upc INTEGER,
     condition TEXT
 );
 
