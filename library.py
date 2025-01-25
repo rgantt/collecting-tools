@@ -49,11 +49,10 @@ class GameLibrary:
                 raise
 
     def register_commands(self):
-        self.register("quit", "Exit the program", self.exit)
         self.register("add", "Add a game to your library", self.add_game)
+        self.register("search", "Search library", self.search_library)
         self.register("prices", "Retrieve latest prices", self.retrieve_prices)
         self.register("ids", "Retrieve missing game IDs", self.retrieve_ids)
-        self.register("search", "Search library", self.search_library)
         self.register("init", "Initialize new database", self.init_db)
 
     def register(self, command: str, description: str, func: Callable):
@@ -72,9 +71,6 @@ class GameLibrary:
                 func()
                 return True
         return False
-
-    def exit(self):
-        raise SystemExit
 
     def add_game(self):
         print("We'll add game to the library interactively. I need some info from you.")
@@ -217,112 +213,6 @@ class GameLibrary:
         if failed:
             print("\nFailures:")
             print(json.dumps(failed, indent=2))
-
-    def edit_game(self):
-        try:
-            search_name = input('Enter game name to search for: ')
-        except EOFError:
-            print("\nInput cancelled")
-            return
-
-        try:
-            with sqlite3.connect(self.db_path) as con:
-                cursor = con.execute("""
-                    SELECT 
-                        p.id,
-                        p.name,
-                        p.console,
-                        p.condition,
-                        p.source,
-                        p.price,
-                        p.acquisition_date
-                    FROM physical_games p
-                    WHERE p.name LIKE ?
-                    ORDER BY p.name
-                """, (f"%{search_name}%",))
-                
-                games = cursor.fetchall()
-                
-                if not games:
-                    print("No games found matching that name.")
-                    return
-
-                print("\nFound games:")
-                for i, (id, name, console, condition, source, price, date) in enumerate(games):
-                    price_str = f"${float(price):.2f}" if price else "no price"
-                    print(f"[{i}] {name} ({console}) - {condition} condition, {price_str} from {source} on {date}")
-
-                try:
-                    choice = int(input('\nSelect game to edit (or Ctrl+D to cancel): '))
-                    if not 0 <= choice < len(games):
-                        print("Invalid selection")
-                        return
-                except (ValueError, EOFError):
-                    print("\nInput cancelled")
-                    return
-
-                game_id = games[choice][0]
-                print("\nEnter new values (or press Enter to keep current value)")
-                
-                try:
-                    updates = {}
-                    name = input(f'Name [{games[choice][1]}]: ').strip()
-                    if name:
-                        updates['name'] = name
-                    
-                    console = input(f'Console [{games[choice][2]}]: ').strip()
-                    if console:
-                        updates['console'] = console
-                    
-                    condition = input(f'Condition [{games[choice][3]}]: ').strip()
-                    if condition:
-                        updates['condition'] = condition
-                    
-                    source = input(f'Source [{games[choice][4]}]: ').strip()
-                    if source:
-                        updates['source'] = source
-                    
-                    price = input(f'Price [{games[choice][5]}]: ').strip()
-                    if price:
-                        updates['price'] = price
-                    
-                    date = self._get_valid_date('Date', games[choice][6])
-                    if date != games[choice][6]:
-                        updates['acquisition_date'] = date
-
-                except EOFError:
-                    print("\nInput cancelled")
-                    return
-
-                if not updates:
-                    print("No changes made")
-                    return
-
-                set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
-                values = list(updates.values()) + [game_id]
-                
-                cursor.execute(f"""
-                    UPDATE physical_games
-                    SET {set_clause}
-                    WHERE id = ?
-                """, values)
-
-                if updates.get('name') or updates.get('console'):
-                    cursor.execute("""
-                        UPDATE pricecharting_games
-                        SET name = COALESCE(?, name),
-                            console = COALESCE(?, console)
-                        WHERE id IN (
-                            SELECT pricecharting_game
-                            FROM physical_games_pricecharting_games
-                            WHERE physical_game = ?
-                        )
-                    """, (updates.get('name'), updates.get('console'), game_id))
-
-                print("Changes saved")
-
-        except sqlite3.Error as e:
-            print(f"Database error: {e}")
 
     def init_db(self):
         """Initialize a new database with the schema."""
@@ -491,7 +381,7 @@ def main():
     while True:
         library.display_commands()
         try:
-            command = input('What would you like to do? ')
+            command = input('What would you like to do? (Ctrl + D to exit) ')
             if not library.execute_command(command):
                 print(f"'{command}' is not a valid command")
 
