@@ -252,10 +252,10 @@ class GameLibrary:
     def init_db(self):
         """Initialize a new database with the schema."""
         try:
-            with open('schema.sql', 'r') as f:
+            with open('schema/collection.sql', 'r') as f:
                 schema = f.read()
         except FileNotFoundError:
-            raise DatabaseError("Could not find schema.sql file")
+            raise DatabaseError("Could not find schema/collection.sql file")
         except IOError as e:
             raise DatabaseError(f"Error reading schema file: {e}")
 
