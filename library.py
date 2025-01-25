@@ -13,7 +13,7 @@ from datetime import datetime
 class GameLibrary:
     def __init__(self, db_path: str):
         self.db_path = db_path
-        self._commands: List[tuple[str, Callable]] = []
+        self._commands: List[tuple[str, str, Callable]] = []
         self.register_commands()
 
     def _validate_date(self, date_str: str) -> bool:
@@ -49,28 +49,28 @@ class GameLibrary:
                 raise
 
     def register_commands(self):
-        self.register("Exit", self.exit)
-        self.register("Add a game to your library", self.add_game)
-        self.register("Retrieve latest prices", self.retrieve_prices)
-        self.register("Retrieve missing game IDs", self.retrieve_ids)
-        self.register("Edit existing game", self.edit_game)
-        self.register("Initialize new database", self.init_db)
-        self.register("Search library", self.search_library)
+        self.register("quit", "Exit the program", self.exit)
+        self.register("add", "Add a game to your library", self.add_game)
+        self.register("prices", "Retrieve latest prices", self.retrieve_prices)
+        self.register("ids", "Retrieve missing game IDs", self.retrieve_ids)
+        self.register("search", "Search library", self.search_library)
+        self.register("init", "Initialize new database", self.init_db)
 
-    def register(self, description: str, command: Callable):
-        self._commands.append((description, command))
+    def register(self, command: str, description: str, func: Callable):
+        self._commands.append((command, description, func))
 
     def display_commands(self):
         print("\nAvailable commands:")
-        for num, (desc, _) in enumerate(self._commands):
-            print(f"[{num}] - {desc}")
+        for command, desc, _ in self._commands:
+            print(f"{command:8} - {desc}")
         print()
 
-    def execute_command(self, number: int):
-        if 0 <= number < len(self._commands):
-            _, command = self._commands[number]
-            command()
-            return True
+    def execute_command(self, command: str):
+        command = command.lower().strip()
+        for cmd, _, func in self._commands:
+            if cmd == command:
+                func()
+                return True
         return False
 
     def exit(self):
@@ -491,12 +491,10 @@ def main():
     while True:
         library.display_commands()
         try:
-            action = int(input('What would you like to do? '))
-            if not library.execute_command(action):
-                print(f"{action} is not a valid option")
+            command = input('What would you like to do? ')
+            if not library.execute_command(command):
+                print(f"'{command}' is not a valid command")
 
-        except ValueError:
-            print("Please enter a valid number")
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")
             break
