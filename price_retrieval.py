@@ -36,7 +36,7 @@ def retrieve_games(db_path: str, max_prices: Optional[int] = None) -> List[str]:
     base_query = """
         SELECT pricecharting_id
         FROM latest_prices
-        WHERE retrieve_time < datetime('now', '-7 days')
+        WHERE retrieve_time < datetime('now', '-1 days')
         OR retrieve_time IS NULL
         ORDER BY name ASC
     """
@@ -51,16 +51,6 @@ def retrieve_games(db_path: str, max_prices: Optional[int] = None) -> List[str]:
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return []
-
-def process_batch(games: List[str]) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]]]:
-    successful, failed = [], []
-    for game_id in games:
-        try:
-            successful.append(get_game_prices(game_id))
-        except ValueError as err:
-            failed.append({'game': game_id, 'message': str(err)})
-            print(f"Error on game {game_id}: {err}")
-    return successful, failed
 
 def insert_price_records(games: List[Dict[str, Any]], db_path: str) -> None:
     records = [

@@ -5,7 +5,7 @@ import sqlite3
 from typing import Callable, List
 import json
 from price_retrieval import retrieve_games as retrieve_games_for_prices
-from price_retrieval import process_batch, insert_price_records
+from price_retrieval import get_game_prices, insert_price_records
 from id_retrieval import retrieve_games as retrieve_games_for_ids
 from id_retrieval import get_game_id, insert_game_ids
 from datetime import datetime
@@ -122,7 +122,6 @@ class GameLibrary:
 
     def retrieve_prices(self):
         try:
-            batch_size = int(input('Batch size (default 50): ') or '50')
             max_prices = input('Maximum prices to retrieve (optional): ')
             max_prices = int(max_prices) if max_prices else None
         except (ValueError, EOFError):
@@ -138,20 +137,36 @@ class GameLibrary:
         all_failed = []
         processed = 0
 
-        for i in range(0, len(games), batch_size):
-            batch = games[i:i + batch_size]
-            successful, failed = process_batch(batch)
+        for i in range(0, len(games)):
+            successful = []
+            failed = []
+            try:
+                successful.append(get_game_prices(games[i]))
+            except ValueError as err:
+                failed.append({'game': games[i], 'message': str(err)})
+                print(f"Error on game {games[i]}: {err}")
             
             if successful:
                 try:
                     insert_price_records(successful, self.db_path)
                     processed += len(successful)
-                    print(f"Progress: {processed}/{len(games)} prices retrieved")
+                    
+                    # Calculate percentage and create progress bar
+                    percent = (processed / len(games)) * 100
+                    bar_length = 50
+                    filled = int(bar_length * processed // len(games))
+                    bar = '=' * filled + '-' * (bar_length - filled)
+                    
+                    # Print progress on same line
+                    print(f"\rProgress: [{bar}] {percent:.1f}% ({processed}/{len(games)})", end='', flush=True)
+                    
                 except sqlite3.Error as e:
-                    print(f"Failed to save batch to database: {e}")
+                    print(f"\nFailed to save batch to database: {e}")
             
             all_failed.extend(failed)
         
+        # Print newline after progress bar is complete
+        print()
         print(f"Completed: {processed}/{len(games)} prices retrieved")
         
         if all_failed:
