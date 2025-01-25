@@ -136,6 +136,7 @@ class GameLibrary:
         print(f"Retrieving prices for {len(games)} games...")
         all_failed = []
         processed = 0
+        total = len(games)
 
         for i in range(0, len(games)):
             successful = []
@@ -152,13 +153,13 @@ class GameLibrary:
                     processed += len(successful)
                     
                     # Calculate percentage and create progress bar
-                    percent = (processed / len(games)) * 100
+                    percent = (processed / total) * 100
                     bar_length = 50
-                    filled = int(bar_length * processed // len(games))
+                    filled = int(bar_length * processed // total)
                     bar = '=' * filled + '-' * (bar_length - filled)
                     
                     # Print progress on same line
-                    print(f"\rProgress: [{bar}] {percent:.1f}% ({processed}/{len(games)})", end='', flush=True)
+                    print(f"\rProgress: [{bar}] {percent:.1f}% ({processed}/{total}) - {games[i]['name']}", end='', flush=True)
                     
                 except sqlite3.Error as e:
                     print(f"\nFailed to save batch to database: {e}")
@@ -183,14 +184,27 @@ class GameLibrary:
 
         failed = []
         retrieved = []
+        processed = 0
+        total = len(games)
+        
         for id, name, console in games:
             try:
-                print(f"{name} on {console}...")
                 data = get_game_id(id, name, console)
                 retrieved.append(data)
             except ValueError as err:
                 msg = f"Could not retrieve info: {err}"
                 failed.append({'game': id, 'name': name, 'message': msg})
+            
+            # Progress bar outside try/except
+            processed += 1
+            percent = (processed / total) * 100
+            bar_length = 50
+            filled = int(bar_length * processed // total)
+            bar = '=' * filled + '-' * (bar_length - filled)
+            print(f"\rProgress: [{bar}] {percent:.1f}% ({processed}/{total}) - {name}", end='', flush=True)
+        
+        # Print newline after progress bar is complete
+        print()
         
         if retrieved:
             try:
