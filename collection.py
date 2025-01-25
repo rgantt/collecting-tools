@@ -2,36 +2,59 @@
 
 import argparse
 import sqlite3
-from typing import Callable, List
+from typing import Callable, List, Optional, Sequence, Iterator, Any
 import json
 from lib.price_retrieval import retrieve_games as retrieve_games_for_prices
 from lib.price_retrieval import get_game_prices, insert_price_records
 from lib.id_retrieval import retrieve_games as retrieve_games_for_ids
 from lib.id_retrieval import get_game_id, insert_game_ids
 from datetime import datetime
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from contextlib import contextmanager
+
+@dataclass
+class GameData:
+    title: str
+    console: str
+    condition: str
+    source: str
+    price: str
+    date: str
+
+class GameLibraryError(Exception):
+    """Base exception for GameLibrary errors."""
+    pass
+
+class DatabaseError(GameLibraryError):
+    """Raised when database operations fail."""
+    pass
 
 class GameLibrary:
-    def __init__(self, db_path: str):
-        self.db_path = db_path
-        self._commands: List[tuple[str, str, Callable]] = []
+    def __init__(self, db_path: str | Path):
+        """Initialize GameLibrary with database path."""
+        self.db_path = Path(db_path)
+        self._commands: list[tuple[str, str, Callable[[], None]]] = []
         self.register_commands()
 
-    def _validate_date(self, date_str: str) -> bool:
-        """Validate that a string is a proper ISO-8601 date (YYYY-MM-DD)."""
+    @contextmanager
+    def _db_connection(self) -> Iterator[sqlite3.Connection]:
+        """Context manager for database connections."""
         try:
-            datetime.strptime(date_str, '%Y-%m-%d')
-            return True
-        except ValueError:
-            return False
+            conn = sqlite3.connect(self.db_path)
+            yield conn
+            conn.commit()
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Database operation failed: {e}")
+        finally:
+            conn.close()
 
-    def _get_valid_date(self, prompt: str, current_value: str = None) -> str:
+    def _get_valid_date(self, prompt: str, current_value: Optional[str] = None) -> str:
         """Get a valid ISO-8601 date from user input."""
         while True:
-            display = f" [{current_value}]" if current_value else ""
             try:
-                date_input = input(f"{prompt}{display}: ").strip()
+                date_input = input(f"{prompt} [{current_value or ''}]: ").strip()
                 
-                # Allow empty input when editing
                 if current_value and not date_input:
                     return current_value
                 
@@ -39,12 +62,12 @@ class GameLibrary:
                     print("Date is required. Format: YYYY-MM-DD")
                     continue
                 
-                if not self._validate_date(date_input):
-                    print("Invalid date format. Please use YYYY-MM-DD (e.g., 2024-03-15)")
-                    continue
-                
+                # Validate by attempting to parse
+                datetime.strptime(date_input, '%Y-%m-%d')
                 return date_input
             
+            except ValueError:
+                print("Invalid date format. Please use YYYY-MM-DD (e.g., 2024-03-15)")
             except EOFError:
                 raise
 
@@ -55,7 +78,7 @@ class GameLibrary:
         self.register("ids", "Retrieve missing game IDs", self.retrieve_ids)
         self.register("init", "Initialize new database", self.init_db)
 
-    def register(self, command: str, description: str, func: Callable):
+    def register(self, command: str, description: str, func: Callable[[], None]):
         self._commands.append((command, description, func))
 
     def display_commands(self):
@@ -64,7 +87,7 @@ class GameLibrary:
             print(f"{command:8} - {desc}")
         print()
 
-    def execute_command(self, command: str):
+    def execute_command(self, command: str) -> bool:
         command = command.lower().strip()
         for cmd, _, func in self._commands:
             if cmd == command:
@@ -72,57 +95,62 @@ class GameLibrary:
                 return True
         return False
 
-    def add_game(self):
-        print("We'll add game to the library interactively. I need some info from you.")
-
+    def add_game(self) -> None:
+        """Add a new game to the library interactively."""
         try:
-            game_data = {
-                'title': input('Title: '),
-                'console': input('Console: '),
-                'condition': input('Condition: '),
-                'source': input('Source: '),
-                'price': input('Price: '),
-                'date': self._get_valid_date('Date')
-            }
+            game = GameData(
+                title=input('Title: ').strip(),
+                console=input('Console: ').strip(),
+                condition=input('Condition: ').strip(),
+                source=input('Source: ').strip(),
+                price=input('Price: ').strip(),
+                date=self._get_valid_date('Date')
+            )
         except EOFError:
             print("\nInput cancelled")
             return
 
         try:
-            with sqlite3.connect(self.db_path) as con:
-                cursor = con.cursor()
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
                 
+                # Using a transaction to ensure data consistency
                 cursor.execute("""
                     INSERT INTO physical_games
                     (acquisition_date, source, price, name, console, condition)
-                    VALUES (?,?,?,?,?,?)
-                """, (game_data['date'], game_data['source'], game_data['price'], 
-                      game_data['title'], game_data['console'], game_data['condition']))
+                    VALUES (:date, :source, :price, :title, :console, :condition)
+                """, asdict(game))
+                
                 physical_id = cursor.lastrowid
 
                 cursor.execute("""
-                    INSERT INTO pricecharting_games
-                    (name, console)
-                    VALUES (?,?)
-                """, (game_data['title'], game_data['console']))
+                    INSERT INTO pricecharting_games (name, console)
+                    VALUES (:title, :console)
+                """, asdict(game))
+                
                 pricecharting_id = cursor.lastrowid
 
                 cursor.execute("""
                     INSERT INTO physical_games_pricecharting_games
                     (physical_game, pricecharting_game)
-                    VALUES (?,?)
+                    VALUES (?, ?)
                 """, (physical_id, pricecharting_id))
                 
-                print("Committed")
-        except sqlite3.Error as e:
-            print(f"Database error: {e}")
+                print("Game added successfully")
+                
+        except DatabaseError as e:
+            print(f"Failed to add game: {e}")
 
-    def retrieve_prices(self):
+    def retrieve_prices(self) -> None:
+        """Retrieve and update prices for games in the library."""
         try:
-            max_prices = input('Maximum prices to retrieve (optional): ')
+            max_prices = input('Maximum prices to retrieve (optional): ').strip()
             max_prices = int(max_prices) if max_prices else None
-        except (ValueError, EOFError):
-            print("\nInvalid input")
+        except ValueError:
+            print("Invalid number entered")
+            return
+        except EOFError:
+            print("\nOperation cancelled")
             return
 
         games = retrieve_games_for_prices(self.db_path, max_prices)
@@ -131,45 +159,28 @@ class GameLibrary:
             return
 
         print(f"Retrieving prices for {len(games)} games...")
-        all_failed = []
-        processed = 0
-        total = len(games)
+        
+        # Use list comprehension for collecting results
+        results = [
+            (game, get_game_prices(game))
+            for game in games
+        ]
+        
+        successful = [(game, prices) for game, prices in results if prices]
+        failed = [(game, str(prices)) for game, prices in results if isinstance(prices, Exception)]
 
-        for i in range(0, len(games)):
-            successful = []
-            failed = []
+        if successful:
             try:
-                successful.append(get_game_prices(games[i]))
-            except ValueError as err:
-                failed.append({'game': games[i], 'message': str(err)})
-                print(f"Error on game {games[i]}: {err}")
-            
-            if successful:
-                try:
-                    insert_price_records(successful, self.db_path)
-                    processed += len(successful)
-                    
-                    # Calculate percentage and create progress bar
-                    percent = (processed / total) * 100
-                    bar_length = 50
-                    filled = int(bar_length * processed // total)
-                    bar = '=' * filled + '-' * (bar_length - filled)
-                    
-                    # Print progress on same line
-                    print(f"\rProgress: [{bar}] {percent:.1f}% ({processed}/{total}) - {games[i]['name']}", end='', flush=True)
-                    
-                except sqlite3.Error as e:
-                    print(f"\nFailed to save batch to database: {e}")
-            
-            all_failed.extend(failed)
-        
-        # Print newline after progress bar is complete
-        print()
-        print(f"Completed: {processed}/{len(games)} prices retrieved")
-        
-        if all_failed:
-            print(f"\nFailures ({len(all_failed)}):")
-            print(json.dumps(all_failed, indent=2))
+                with self._db_connection() as conn:
+                    insert_price_records([price for _, price in successful], conn)
+                print(f"Updated prices for {len(successful)} games")
+            except DatabaseError as e:
+                print(f"Failed to save prices: {e}")
+
+        if failed:
+            print("\nFailures:")
+            for game, error in failed:
+                print(f"- {game['name']}: {error}")
 
     def retrieve_ids(self):
         games = retrieve_games_for_ids(self.db_path)
@@ -372,7 +383,7 @@ class GameLibrary:
             print(f"Database error: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description='Add games to your library')
+    parser = argparse.ArgumentParser(description='Manage your game collection')
     parser.add_argument('-d', '--db', required=True, help='Path to SQLite database')
     args = parser.parse_args()
 
