@@ -55,6 +55,7 @@ class GameLibrary:
         self.register("Retrieve missing game IDs", self.retrieve_ids)
         self.register("Edit existing game", self.edit_game)
         self.register("Initialize new database", self.init_db)
+        self.register("Search library", self.search_library)
 
     def register(self, description: str, command: Callable):
         self._commands.append((description, command))
@@ -343,6 +344,140 @@ class GameLibrary:
             with sqlite3.connect(self.db_path) as con:
                 con.executescript(schema)
                 print(f"Successfully initialized database at {self.db_path}")
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+
+    def search_library(self):
+        """Search for games in the library by name, console, or condition."""
+        try:
+            search_term = input('Enter search term: ').strip()
+            if not search_term:
+                print("Search term required")
+                return
+        except EOFError:
+            print("\nSearch cancelled")
+            return
+
+        try:
+            with sqlite3.connect(self.db_path) as con:
+                cursor = con.execute("""
+                    SELECT 
+                        p.id,
+                        p.name,
+                        p.console,
+                        p.condition,
+                        p.source,
+                        p.price,
+                        p.acquisition_date,
+                        COALESCE(pc.pricecharting_id, 'Not identified') as pricecharting_id,
+                        COALESCE(
+                            (
+                                SELECT price 
+                                FROM pricecharting_prices pp 
+                                WHERE pp.pricecharting_id = pc.pricecharting_id 
+                                AND pp.condition = p.condition
+                                ORDER BY pp.retrieve_time DESC 
+                                LIMIT 1
+                            ), 
+                            NULL
+                        ) as current_price
+                    FROM physical_games p
+                    LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
+                    LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+                    WHERE p.name LIKE ? 
+                    OR p.console LIKE ? 
+                    OR p.condition LIKE ?
+                    ORDER BY p.name ASC
+                """, (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"))
+                
+                games = cursor.fetchall()
+                
+                if not games:
+                    print("No games found matching that term.")
+                    return
+
+                print(f"\nFound {len(games)} games:")
+                for i, (id, name, console, condition, source, price, date, pc_id, current_price) in enumerate(games):
+                    purchase_price = f"${float(price):.2f}" if price else "no price"
+                    market_price = f"${float(current_price):.2f}" if current_price else "no current price"
+                    print(f"\n[{i}] {name} ({console}) - {condition} condition")
+                    print(f"    {market_price} (bought for {purchase_price} from {source} on {date})")
+
+                try:
+                    choice = input('\nSelect a game to edit (or press Enter to cancel): ').strip()
+                    if not choice:
+                        return
+                        
+                    choice = int(choice)
+                    if not 0 <= choice < len(games):
+                        print("Invalid selection")
+                        return
+                    
+                    # Get the selected game's data
+                    game_id = games[choice][0]
+                    print("\nEnter new values (or press Enter to keep current value)")
+                    
+                    try:
+                        updates = {}
+                        name = input(f'Name [{games[choice][1]}]: ').strip()
+                        if name:
+                            updates['name'] = name
+                        
+                        console = input(f'Console [{games[choice][2]}]: ').strip()
+                        if console:
+                            updates['console'] = console
+                        
+                        condition = input(f'Condition [{games[choice][3]}]: ').strip()
+                        if condition:
+                            updates['condition'] = condition
+                        
+                        source = input(f'Source [{games[choice][4]}]: ').strip()
+                        if source:
+                            updates['source'] = source
+                        
+                        price = input(f'Price [{games[choice][5]}]: ').strip()
+                        if price:
+                            updates['price'] = price
+                        
+                        date = self._get_valid_date('Date', games[choice][6])
+                        if date != games[choice][6]:
+                            updates['acquisition_date'] = date
+
+                    except EOFError:
+                        print("\nInput cancelled")
+                        return
+
+                    if not updates:
+                        print("No changes made")
+                        return
+
+                    set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+                    values = list(updates.values()) + [game_id]
+                    
+                    cursor.execute(f"""
+                        UPDATE physical_games
+                        SET {set_clause}
+                        WHERE id = ?
+                    """, values)
+
+                    if updates.get('name') or updates.get('console'):
+                        cursor.execute("""
+                            UPDATE pricecharting_games
+                            SET name = COALESCE(?, name),
+                                console = COALESCE(?, console)
+                            WHERE id IN (
+                                SELECT pricecharting_game
+                                FROM physical_games_pricecharting_games
+                                WHERE physical_game = ?
+                            )
+                        """, (updates.get('name'), updates.get('console'), game_id))
+
+                    print("Changes saved")
+
+                except (ValueError, EOFError):
+                    print("\nEdit cancelled")
+                    return
+
         except sqlite3.Error as e:
             print(f"Database error: {e}")
 
