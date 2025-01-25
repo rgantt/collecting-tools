@@ -4,10 +4,10 @@ import argparse
 import sqlite3
 from typing import Callable, List
 import json
-from price_retrieval import retrieve_games as retrieve_games_for_prices
-from price_retrieval import get_game_prices, insert_price_records
-from id_retrieval import retrieve_games as retrieve_games_for_ids
-from id_retrieval import get_game_id, insert_game_ids
+from lib.price_retrieval import retrieve_games as retrieve_games_for_prices
+from lib.price_retrieval import get_game_prices, insert_price_records
+from lib.id_retrieval import retrieve_games as retrieve_games_for_ids
+from lib.id_retrieval import get_game_id, insert_game_ids
 from datetime import datetime
 
 class GameLibrary:
@@ -248,7 +248,8 @@ class GameLibrary:
 
                 print("\nFound games:")
                 for i, (id, name, console, condition, source, price, date) in enumerate(games):
-                    print(f"[{i}] {name} ({console}) - {condition} condition, {price} from {source} on {date}")
+                    price_str = f"${float(price):.2f}" if price else "no price"
+                    print(f"[{i}] {name} ({console}) - {condition} condition, {price_str} from {source} on {date}")
 
                 try:
                     choice = int(input('\nSelect game to edit (or Ctrl+D to cancel): '))
