@@ -36,6 +36,7 @@ class GameLibrary:
         self.db_path = Path(db_path)
         self._commands: list[tuple[str, str, Callable[[], None]]] = []
         self.register_commands()
+        self._ensure_initialized()
 
     @contextmanager
     def _db_connection(self) -> Iterator[sqlite3.Connection]:
@@ -71,12 +72,35 @@ class GameLibrary:
             except EOFError:
                 raise
 
+    def _is_initialized(self) -> bool:
+        """Check if database is initialized by looking for physical_games table."""
+        try:
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='physical_games'
+                """)
+                return cursor.fetchone() is not None
+        except DatabaseError:
+            return False
+
+    def _ensure_initialized(self) -> None:
+        """Check if database needs initialization and prompt user if needed."""
+        if self._is_initialized():
+            return
+
+        print("Database not initialized.")
+        if input("Would you like to initialize it now? (y/N) ").lower() == 'y':
+            self.init_db()
+        else:
+            raise DatabaseError("Cannot proceed with uninitialized database")
+
     def register_commands(self):
         self.register("add", "Add a game to your library", self.add_game)
         self.register("search", "Search library", self.search_library)
         self.register("prices", "Retrieve latest prices", self.retrieve_prices)
         self.register("ids", "Retrieve missing game IDs", self.retrieve_ids)
-        self.register("init", "Initialize new database", self.init_db)
 
     def register(self, command: str, description: str, func: Callable[[], None]):
         self._commands.append((command, description, func))
@@ -227,26 +251,20 @@ class GameLibrary:
 
     def init_db(self):
         """Initialize a new database with the schema."""
-        if input("This will initialize a new database. Are you sure? (y/N) ").lower() != 'y':
-            print("Cancelled")
-            return
-
         try:
             with open('schema.sql', 'r') as f:
                 schema = f.read()
         except FileNotFoundError:
-            print("Error: Could not find schema.sql file")
-            return
+            raise DatabaseError("Could not find schema.sql file")
         except IOError as e:
-            print(f"Error reading schema file: {e}")
-            return
+            raise DatabaseError(f"Error reading schema file: {e}")
 
         try:
             with sqlite3.connect(self.db_path) as con:
                 con.executescript(schema)
                 print(f"Successfully initialized database at {self.db_path}")
         except sqlite3.Error as e:
-            print(f"Database error: {e}")
+            raise DatabaseError(f"Database initialization failed: {e}")
 
     def search_library(self):
         """Search for games in the library by name, console, or condition."""
