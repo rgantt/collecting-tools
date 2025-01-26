@@ -101,6 +101,7 @@ class GameLibrary:
         self.register("search", "Search library", self.search_library)
         self.register("prices", "Retrieve latest prices", self.retrieve_prices)
         self.register("ids", "Retrieve missing game IDs", self.retrieve_ids)
+        self.register("want", "Add a game to the wishlist", self.want_game)
 
     def register(self, command: str, description: str, func: Callable[[], None]):
         self._commands.append((command, description, func))
@@ -294,6 +295,59 @@ class GameLibrary:
         except sqlite3.Error as e:
             raise DatabaseError(f"Database initialization failed: {e}")
 
+    def want_game(self) -> None:
+        """Add a new game to the wishlist interactively."""
+        try:
+            title = input('Title: ').strip()
+            console = input('Console: ').strip()
+            
+            if not title or not console:
+                print("Title and console are required")
+                return
+            
+        except EOFError:
+            print("\nInput cancelled")
+            return
+
+        try:
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Insert into physical_games
+                cursor.execute("""
+                    INSERT INTO physical_games
+                    (name, console)
+                    VALUES (?, ?)
+                """, (title, console))
+                
+                physical_id = cursor.lastrowid
+
+                # Add to wanted_games
+                cursor.execute("""
+                    INSERT INTO wanted_games
+                    (physical_game)
+                    VALUES (?)
+                """, (physical_id,))
+
+                # Insert into pricecharting_games
+                cursor.execute("""
+                    INSERT INTO pricecharting_games (name, console)
+                    VALUES (?, ?)
+                """, (title, console))
+                
+                pricecharting_id = cursor.lastrowid
+
+                cursor.execute("""
+                    INSERT INTO physical_games_pricecharting_games
+                    (physical_game, pricecharting_game)
+                    VALUES (?, ?)
+                """, (physical_id, pricecharting_id))
+                
+                print("Game added to wishlist successfully")
+                
+        except DatabaseError as e:
+            print(f"Failed to add game to wishlist: {e}")
+
     def search_library(self):
         """Search for games in the library by name, console, or condition."""
         try:
@@ -307,6 +361,18 @@ class GameLibrary:
 
         try:
             with sqlite3.connect(self.db_path) as con:
+                # First, let's debug by printing all games in wanted_games
+                cursor = con.execute("""
+                    SELECT p.name, p.console, w.id 
+                    FROM physical_games p
+                    JOIN wanted_games w ON p.id = w.physical_game
+                """)
+                wanted = cursor.fetchall()
+                print("\nWanted games in database:")
+                for name, console, wid in wanted:
+                    print(f"- {name} ({console}) [wanted_id: {wid}]")
+
+                # Now the main search query
                 cursor = con.execute("""
                     SELECT 
                         p.id,
@@ -322,61 +388,82 @@ class GameLibrary:
                                 SELECT price 
                                 FROM pricecharting_prices pp 
                                 WHERE pp.pricecharting_id = pc.pricecharting_id 
-                                AND pp.condition = pg.condition
+                                AND pp.condition = COALESCE(pg.condition, 'complete')
                                 ORDER BY pp.retrieve_time DESC 
                                 LIMIT 1
                             ), 
                             NULL
-                        ) as current_price
+                        ) as current_price,
+                        CASE WHEN w.id IS NOT NULL THEN 1 ELSE 0 END as wanted
                     FROM physical_games p
-                    JOIN purchased_games pg ON p.id = pg.physical_game
+                    LEFT JOIN purchased_games pg ON p.id = pg.physical_game
+                    LEFT JOIN wanted_games w ON p.id = w.physical_game
                     LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
                     LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
-                    WHERE p.name LIKE ? 
-                    OR p.console LIKE ? 
-                    OR pg.condition LIKE ?
+                    WHERE LOWER(p.name) LIKE LOWER('%' || ? || '%')
+                    OR LOWER(p.console) LIKE LOWER('%' || ? || '%')
+                    GROUP BY p.id
                     ORDER BY p.name ASC
-                """, (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"))
+                """, (search_term, search_term))
                 
                 games = cursor.fetchall()
+                print("\nDebug - Raw results:")
+                for game in games:
+                    print(game)
                 
                 if not games:
-                    print("No games found matching that term.")
+                    print("\nNo games found matching that term.")
                     return
 
                 print(f"\nFound {len(games)} games:")
-                for i, (id, name, console, condition, source, price, date, pc_id, current_price) in enumerate(games):
-                    purchase_price = f"${float(price):.2f}" if price else "no price"
-                    market_price = f"${float(current_price):.2f}" if current_price else "no current price"
-                    print(f"\n[{i}] {name} ({console}) - {condition} condition")
-                    print(f"    {market_price} (bought for {purchase_price} from {source} on {date})")
-
-                try:
-                    choice = input('\nSelect a game to edit (or press Enter to cancel): ').strip()
-                    if not choice:
-                        return
-                        
-                    choice = int(choice)
-                    if not 0 <= choice < len(games):
-                        print("Invalid selection")
-                        return
-                    
-                    # Get the selected game's data
-                    game_id = games[choice][0]
-                    print("\nEnter new values (or press Enter to keep current value)")
-                    
+                for i, (id, name, console, condition, source, price, date, pc_id, current_price, wanted) in enumerate(games):
                     try:
-                        physical_updates = {}
-                        purchase_updates = {}
-                        
-                        name = input(f'Name [{games[choice][1]}]: ').strip()
-                        if name:
-                            physical_updates['name'] = name
-                        
-                        console = input(f'Console [{games[choice][2]}]: ').strip()
-                        if console:
-                            physical_updates['console'] = console
-                        
+                        if wanted:
+                            print(f"[{i}] {name} ({console}) - WISHLIST")
+                            market_price = f"${float(current_price):.2f}" if current_price else "no current price"
+                            print(f"    Current market price: {market_price}")
+                        else:
+                            purchase_price = f"${float(price):.2f}" if price else "no price"
+                            market_price = f"${float(current_price):.2f}" if current_price else "no current price"
+                            print(f"[{i}] {name} ({console}) - {condition} condition")
+                            print(f"    {market_price} (bought for {purchase_price} from {source} on {date})")
+                    except (TypeError, ValueError) as e:
+                        if wanted:
+                            print(f"[{i}] {name} ({console}) - WISHLIST")
+                            print(f"    Current market price: no current price")
+                        else:
+                            print(f"[{i}] {name} ({console})")
+                            print(f"    Error displaying price info: {e}")
+                    print()  # Single newline between entries
+
+                choice = input('\nSelect a game to edit (or press Enter to cancel): ').strip()
+                if not choice:
+                    return
+                    
+                choice = int(choice)
+                if not 0 <= choice < len(games):
+                    print("Invalid selection")
+                    return
+                
+                # Get the selected game's data
+                game_id = games[choice][0]
+                wanted = games[choice][9]  # The 'wanted' flag from our query
+                
+                print("\nEnter new values (or press Enter to keep current value)")
+                
+                try:
+                    physical_updates = {}
+                    purchase_updates = {}
+                    
+                    name = input(f'Name [{games[choice][1]}]: ').strip()
+                    if name:
+                        physical_updates['name'] = name
+                    
+                    console = input(f'Console [{games[choice][2]}]: ').strip()
+                    if console:
+                        physical_updates['console'] = console
+                    
+                    if not wanted:  # Only ask for these details if it's not a wishlist item
                         condition = input(f'Condition [{games[choice][3]}]: ').strip()
                         if condition:
                             purchase_updates['condition'] = condition
@@ -393,10 +480,6 @@ class GameLibrary:
                         if date != games[choice][6]:
                             purchase_updates['acquisition_date'] = date
 
-                    except EOFError:
-                        print("\nInput cancelled")
-                        return
-
                     if not physical_updates and not purchase_updates:
                         print("No changes made")
                         return
@@ -411,8 +494,8 @@ class GameLibrary:
                             WHERE id = ?
                         """, values)
 
-                    # Update purchased_games if needed
-                    if purchase_updates:
+                    # Update purchased_games if needed (only for non-wishlist items)
+                    if purchase_updates and not wanted:
                         set_clause = ", ".join(f"{k} = ?" for k in purchase_updates.keys())
                         values = list(purchase_updates.values()) + [game_id]
                         cursor.execute(f"""
