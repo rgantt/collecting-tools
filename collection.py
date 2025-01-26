@@ -100,7 +100,6 @@ class GameLibrary:
         self.register("add", "Add a game to your library", self.add_game)
         self.register("search", "Search library", self.search_library)
         self.register("prices", "Retrieve latest prices", self.retrieve_prices)
-        self.register("ids", "Retrieve missing game IDs", self.retrieve_ids)
         self.register("want", "Add a game to the wishlist", self.want_game)
         self.register("wishlist", "View your wishlist", self.view_wishlist)
         self.register("help", "Display available commands", self.display_commands)
@@ -124,18 +123,39 @@ class GameLibrary:
 
     def add_game(self) -> None:
         """Add a new game to the library interactively."""
-        try:
-            game = GameData(
-                title=input('Title: ').strip(),
-                console=input('Console: ').strip(),
-                condition=input('Condition: ').strip(),
-                source=input('Source: ').strip(),
-                price=input('Price: ').strip(),
-                date=self._get_valid_date('Date')
-            )
-        except EOFError:
-            print("\nInput cancelled")
-            return
+        previous_game = None
+        while True:  # Loop to allow retrying if ID retrieval fails
+            try:
+                game = GameData(
+                    title=input(f'Title{f" [{previous_game.title}]" if previous_game else ""}: ').strip() or (previous_game.title if previous_game else ""),
+                    console=input(f'Console{f" [{previous_game.console}]" if previous_game else ""}: ').strip() or (previous_game.console if previous_game else ""),
+                    condition=input(f'Condition{f" [{previous_game.condition}]" if previous_game else ""}: ').strip() or (previous_game.condition if previous_game else ""),
+                    source=input(f'Source{f" [{previous_game.source}]" if previous_game else ""}: ').strip() or (previous_game.source if previous_game else ""),
+                    price=input(f'Price{f" [{previous_game.price}]" if previous_game else ""}: ').strip() or (previous_game.price if previous_game else ""),
+                    date=self._get_valid_date('Date', previous_game.date if previous_game else None)
+                )
+            except EOFError:
+                print("\nInput cancelled")
+                return
+
+            # Try to retrieve the pricecharting ID before adding to database
+            try:
+                # Using -1 as temporary ID since the game isn't in DB yet
+                id_data = get_game_id(-1, game.title, game.console)
+                break  # If successful, exit the loop and proceed with adding the game
+            except ValueError as err:
+                print(f"\nWarning: Could not retrieve price tracking ID: {err}")
+                choice = input("Would you like to (e)dit the game info, or (c)ontinue without price tracking? [e/c]: ").lower()
+                if choice == 'c':
+                    id_data = None
+                    break
+                elif choice == 'e':
+                    print("\nPlease enter the game information again:")
+                    previous_game = game  # Store the current game data for the next iteration
+                    continue
+                else:
+                    print("Invalid choice, cancelling game addition")
+                    return
 
         try:
             with self._db_connection() as conn:
@@ -145,8 +165,8 @@ class GameLibrary:
                 cursor.execute("""
                     INSERT INTO physical_games
                     (name, console)
-                    VALUES (:title, :console)
-                """, asdict(game))
+                    VALUES (?, ?)
+                """, (game.title, game.console))
                 
                 physical_id = cursor.lastrowid
 
@@ -154,23 +174,39 @@ class GameLibrary:
                 cursor.execute("""
                     INSERT INTO purchased_games
                     (physical_game, acquisition_date, source, price, condition)
-                    VALUES (?, :date, :source, :price, :condition)
-                """, (physical_id, *[asdict(game)[k] for k in ['date', 'source', 'price', 'condition']]))
+                    VALUES (?, ?, ?, ?, ?)
+                """, (physical_id, game.date, game.source, game.price, game.condition))
 
-                cursor.execute("""
-                    INSERT INTO pricecharting_games (name, console)
-                    VALUES (:title, :console)
-                """, asdict(game))
-                
-                pricecharting_id = cursor.lastrowid
+                # Only add pricecharting info if we successfully retrieved an ID
+                if id_data:
+                    # First check if we already have this pricecharting ID in our database
+                    cursor.execute("""
+                        SELECT id FROM pricecharting_games 
+                        WHERE pricecharting_id = ?
+                    """, (id_data['pricecharting_id'],))
+                    
+                    existing_pc_game = cursor.fetchone()
+                    
+                    if existing_pc_game:
+                        # If we already have this game in pricecharting_games, just link to it
+                        pricecharting_id = existing_pc_game[0]
+                    else:
+                        # Otherwise create a new pricecharting_games entry
+                        cursor.execute("""
+                            INSERT INTO pricecharting_games (name, console, pricecharting_id)
+                            VALUES (?, ?, ?)
+                        """, (id_data['name'], id_data['console'], id_data['pricecharting_id']))
+                        pricecharting_id = cursor.lastrowid
 
-                cursor.execute("""
-                    INSERT INTO physical_games_pricecharting_games
-                    (physical_game, pricecharting_game)
-                    VALUES (?, ?)
-                """, (physical_id, pricecharting_id))
-                
-                print("Game added successfully")
+                    cursor.execute("""
+                        INSERT INTO physical_games_pricecharting_games
+                        (physical_game, pricecharting_game)
+                        VALUES (?, ?)
+                    """, (physical_id, pricecharting_id))
+                    
+                    print("Game added successfully with price tracking enabled")
+                else:
+                    print("Game added successfully without price tracking")
                 
         except DatabaseError as e:
             print(f"Failed to add game: {e}")
@@ -232,53 +268,6 @@ class GameLibrary:
         if all_failed:
             print(f"\nFailures ({len(all_failed)}):")
             print(json.dumps(all_failed, indent=2))
-
-    def retrieve_ids(self):
-        games = retrieve_games_for_ids(self.db_path)
-        if not games:
-            print("No unidentified games found.")
-            return
-
-        print(f"Retrieving identifiers for {len(games)} games:")
-        
-        # Show initial progress bar at 0%
-        bar_length = 50
-        bar = '-' * bar_length
-        print(f"\rProgress: [{bar}] 0.0% (0/{len(games)})", end='', flush=True)
-
-        failed = []
-        retrieved = []
-        processed = 0
-        total = len(games)
-        
-        for id, name, console in games:
-            try:
-                data = get_game_id(id, name, console)
-                retrieved.append(data)
-            except ValueError as err:
-                msg = f"Could not retrieve info: {err}"
-                failed.append({'game': id, 'name': name, 'message': msg})
-            
-            # Progress bar outside try/except
-            processed += 1
-            percent = (processed / total) * 100
-            filled = int(bar_length * processed // total)
-            bar = '=' * filled + '-' * (bar_length - filled)
-            print(f"\rProgress: [{bar}] {percent:.1f}% ({processed}/{total}) - {name}", end='', flush=True)
-        
-        # Print newline after progress bar is complete
-        print()
-        
-        if retrieved:
-            try:
-                records_inserted = insert_game_ids(retrieved, self.db_path)
-                print(f"Saved {records_inserted} records to database")
-            except sqlite3.Error as e:
-                print(f"Failed to save records to database: {e}")
-
-        if failed:
-            print("\nFailures:")
-            print(json.dumps(failed, indent=2))
 
     def init_db(self):
         """Initialize a new database with the schema."""
