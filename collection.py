@@ -102,6 +102,8 @@ class GameLibrary:
         self.register("prices", "Retrieve latest prices", self.retrieve_prices)
         self.register("ids", "Retrieve missing game IDs", self.retrieve_ids)
         self.register("want", "Add a game to the wishlist", self.want_game)
+        self.register("wishlist", "View your wishlist", self.view_wishlist)
+        self.register("help", "Display available commands", self.display_commands)
 
     def register(self, command: str, description: str, func: Callable[[], None]):
         self._commands.append((command, description, func))
@@ -449,6 +451,17 @@ class GameLibrary:
                 game_id = games[choice][0]
                 wanted = games[choice][9]  # The 'wanted' flag from our query
                 
+                # Inside the edit section after selecting a game
+                if wanted:  # Add this new section for wishlist items
+                    remove = input('Remove from wishlist? (default: No) [y/N]: ').strip().lower()
+                    if remove == 'y':
+                        cursor.execute("""
+                            DELETE FROM wanted_games
+                            WHERE physical_game = ?
+                        """, (game_id,))
+                        print("Game removed from wishlist")
+                        return
+
                 print("\nEnter new values (or press Enter to keep current value)")
                 
                 try:
@@ -526,6 +539,68 @@ class GameLibrary:
         except sqlite3.Error as e:
             print(f"Database error: {e}")
 
+    def view_wishlist(self) -> None:
+        """Display all games in the wishlist, optionally filtered by a search term."""
+        try:
+            search_term = input('Enter search term (or press Enter to show all): ').strip()
+        except EOFError:
+            print("\nWishlist view cancelled")
+            return
+
+        try:
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
+                
+                query = """
+                    SELECT 
+                        p.name,
+                        p.console,
+                        COALESCE(
+                            (
+                                SELECT price 
+                                FROM pricecharting_prices pp 
+                                JOIN physical_games_pricecharting_games pcg ON pp.pricecharting_id = pcg.pricecharting_game
+                                WHERE pcg.physical_game = p.id
+                                AND pp.condition = 'complete'
+                                ORDER BY pp.retrieve_time DESC 
+                                LIMIT 1
+                            ),
+                            NULL
+                        ) as current_price
+                    FROM physical_games p
+                    JOIN wanted_games w ON p.id = w.physical_game
+                    WHERE 1=1
+                """
+                params = []
+                
+                if search_term:
+                    query += " AND (LOWER(p.name) LIKE LOWER(?) OR LOWER(p.console) LIKE LOWER(?))"
+                    params.extend([f'%{search_term}%', f'%{search_term}%'])
+                
+                query += " ORDER BY p.name ASC"
+                
+                cursor.execute(query, params)
+                games = cursor.fetchall()
+                
+                if not games:
+                    if search_term:
+                        print(f"\nNo wishlist items found matching '{search_term}'")
+                    else:
+                        print("\nYour wishlist is empty")
+                    return
+
+                print(f"\nWishlist items{' matching ' + search_term if search_term else ''}:")
+                for name, console, current_price in games:
+                    print(f"\n{name} ({console})")
+                    try:
+                        price_str = f"${float(current_price):.2f}" if current_price else "no current price"
+                    except (TypeError, ValueError):
+                        price_str = "no current price"
+                    print(f"    Current market price: {price_str}")
+                    
+        except DatabaseError as e:
+            print(f"Failed to retrieve wishlist: {e}")
+
 def main():
     parser = argparse.ArgumentParser(description='Manage your game collection')
     parser.add_argument('-d', '--db', required=True, help='Path to SQLite database')
@@ -533,10 +608,12 @@ def main():
 
     library = GameLibrary(args.db)
     
+    # Display commands only once at startup
+    library.display_commands()
+    
     while True:
-        library.display_commands()
         try:
-            command = input('What would you like to do? (Ctrl + D to exit) ')
+            command = input('\nWhat would you like to do? (Ctrl + D to exit) ')
             if not library.execute_command(command):
                 print(f"'{command}' is not a valid command")
 

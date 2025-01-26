@@ -12,6 +12,8 @@ search   - Search library
 prices   - Retrieve latest prices
 ids      - Retrieve missing game IDs
 want     - Add a game to the wishlist
+wishlist - View your wishlist
+help     - Display available commands
 
 What would you like to do? (Ctrl + D to exit) 
 ```
@@ -79,6 +81,47 @@ What would you like to do? (Ctrl + D to exit) ids
 Retrieving identifiers for 5 games:
 Progress: [==================================================] 100.0% (5/5) - Zelda: Breath of the Wild
 Saved 5 records to database
+```
+
+#### wishlist - View your wishlist
+```bash
+What would you like to do? (Ctrl + D to exit) wishlist
+Enter search term (or press Enter to show all): mario
+
+Wishlist items matching mario:
+Super Mario RPG (Switch)
+    Current market price: $54.99
+
+Mario Kart 9 (Switch)
+    Current market price: no current price
+
+# Or view entire wishlist by pressing Enter at the search prompt:
+What would you like to do? (Ctrl + D to exit) wishlist
+Enter search term (or press Enter to show all): 
+
+Wishlist items:
+Advance Wars 1+2 Re-Boot Camp (Switch)
+    Current market price: $49.99
+
+Mario Kart 9 (Switch)
+    Current market price: no current price
+
+Super Mario RPG (Switch)
+    Current market price: $54.99
+```
+
+#### help - Display available commands
+```bash
+What would you like to do? (Ctrl + D to exit) help
+
+Available commands:
+add      - Add a game to your library
+search   - Search library
+prices   - Retrieve latest prices
+ids      - Retrieve missing game IDs
+want     - Add a game to the wishlist
+wishlist - View your wishlist
+help     - Display available commands
 ```
 
 ### Features
