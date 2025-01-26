@@ -34,9 +34,9 @@ def get_game_prices(game_id: str) -> Dict[str, Any]:
 
 def retrieve_games(db_path: str, max_prices: Optional[int] = None) -> List[str]:
     base_query = """
-        SELECT pricecharting_id
+        SELECT DISTINCT pricecharting_id
         FROM latest_prices
-        WHERE retrieve_time < datetime('now', '-1 days')
+        WHERE retrieve_time < datetime('now', '-7 days')
         OR retrieve_time IS NULL
         ORDER BY name ASC
     """

@@ -409,9 +409,6 @@ class GameLibrary:
                 """, (search_term, search_term))
                 
                 games = cursor.fetchall()
-                print("\nDebug - Raw results:")
-                for game in games:
-                    print(game)
                 
                 if not games:
                     print("\nNo games found matching that term.")

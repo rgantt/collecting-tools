@@ -62,9 +62,9 @@ SELECT
 	z.pricecharting_id,
 	max(p.retrieve_time) as retrieve_time,
 	p.price,
-	pg.condition
+	p.condition
 FROM physical_games g
-JOIN purchased_games pg
+LEFT JOIN purchased_games pg
 	ON g.id = pg.physical_game
 JOIN physical_games_pricecharting_games j
 	ON g.id = j.physical_game
@@ -72,7 +72,6 @@ JOIN pricecharting_games z
 	ON j.pricecharting_game = z.id
 LEFT JOIN pricecharting_prices p
 	ON z.pricecharting_id = p.pricecharting_id
-	AND p.condition = pg.condition
 GROUP BY g.id
 ORDER BY g.name ASC;
 
