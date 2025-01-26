@@ -141,11 +141,18 @@ class GameLibrary:
                 # Using a transaction to ensure data consistency
                 cursor.execute("""
                     INSERT INTO physical_games
-                    (acquisition_date, source, price, name, console, condition)
-                    VALUES (:date, :source, :price, :title, :console, :condition)
+                    (name, console)
+                    VALUES (:title, :console)
                 """, asdict(game))
                 
                 physical_id = cursor.lastrowid
+
+                # Insert purchase details
+                cursor.execute("""
+                    INSERT INTO purchased_games
+                    (physical_game, acquisition_date, source, price, condition)
+                    VALUES (?, :date, :source, :price, :condition)
+                """, (physical_id, *[asdict(game)[k] for k in ['date', 'source', 'price', 'condition']]))
 
                 cursor.execute("""
                     INSERT INTO pricecharting_games (name, console)
@@ -165,16 +172,12 @@ class GameLibrary:
         except DatabaseError as e:
             print(f"Failed to add game: {e}")
 
-    def retrieve_prices(self) -> None:
-        """Retrieve and update prices for games in the library."""
+    def retrieve_prices(self):
         try:
-            max_prices = input('Maximum prices to retrieve (optional): ').strip()
+            max_prices = input('Maximum prices to retrieve (optional): ')
             max_prices = int(max_prices) if max_prices else None
-        except ValueError:
-            print("Invalid number entered")
-            return
-        except EOFError:
-            print("\nOperation cancelled")
+        except (ValueError, EOFError):
+            print("\nInvalid input")
             return
 
         games = retrieve_games_for_prices(self.db_path, max_prices)
@@ -183,28 +186,49 @@ class GameLibrary:
             return
 
         print(f"Retrieving prices for {len(games)} games...")
-        
-        # Use list comprehension for collecting results
-        results = [
-            (game, get_game_prices(game))
-            for game in games
-        ]
-        
-        successful = [(game, prices) for game, prices in results if prices]
-        failed = [(game, str(prices)) for game, prices in results if isinstance(prices, Exception)]
+        all_failed = []
+        processed = 0
 
-        if successful:
+        bar_length = 50
+        bar = '-' * bar_length
+        
+        # Print progress on same line
+        print(f"\rProgress: [{bar}] 0% (0/{len(games)})", end='', flush=True)
+
+        for i in range(0, len(games)):
+            successful = []
+            failed = []
             try:
-                with self._db_connection() as conn:
-                    insert_price_records([price for _, price in successful], conn)
-                print(f"Updated prices for {len(successful)} games")
-            except DatabaseError as e:
-                print(f"Failed to save prices: {e}")
-
-        if failed:
-            print("\nFailures:")
-            for game, error in failed:
-                print(f"- {game['name']}: {error}")
+                successful.append(get_game_prices(games[i]))
+            except ValueError as err:
+                failed.append({'game': games[i], 'message': str(err)})
+                print(f"Error on game {games[i]}: {err}")
+            
+            if successful:
+                try:
+                    insert_price_records(successful, self.db_path)
+                    processed += len(successful)
+                    
+                    # Calculate percentage and create progress bar
+                    percent = (processed / len(games)) * 100
+                    filled = int(bar_length * processed // len(games))
+                    bar = '=' * filled + '-' * (bar_length - filled)
+                    
+                    # Print progress on same line
+                    print(f"\rProgress: [{bar}] {percent:.1f}% ({processed}/{len(games)})", end='', flush=True)
+                    
+                except sqlite3.Error as e:
+                    print(f"\nFailed to save batch to database: {e}")
+            
+            all_failed.extend(failed)
+        
+        # Print newline after progress bar is complete
+        print()
+        print(f"Completed: {processed}/{len(games)} prices retrieved")
+        
+        if all_failed:
+            print(f"\nFailures ({len(all_failed)}):")
+            print(json.dumps(all_failed, indent=2))
 
     def retrieve_ids(self):
         games = retrieve_games_for_ids(self.db_path)
@@ -284,28 +308,29 @@ class GameLibrary:
                         p.id,
                         p.name,
                         p.console,
-                        p.condition,
-                        p.source,
-                        p.price,
-                        p.acquisition_date,
+                        pg.condition,
+                        pg.source,
+                        pg.price,
+                        pg.acquisition_date,
                         COALESCE(pc.pricecharting_id, 'Not identified') as pricecharting_id,
                         COALESCE(
                             (
                                 SELECT price 
                                 FROM pricecharting_prices pp 
                                 WHERE pp.pricecharting_id = pc.pricecharting_id 
-                                AND pp.condition = p.condition
+                                AND pp.condition = pg.condition
                                 ORDER BY pp.retrieve_time DESC 
                                 LIMIT 1
                             ), 
                             NULL
                         ) as current_price
                     FROM physical_games p
+                    JOIN purchased_games pg ON p.id = pg.physical_game
                     LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
                     LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
                     WHERE p.name LIKE ? 
                     OR p.console LIKE ? 
-                    OR p.condition LIKE ?
+                    OR pg.condition LIKE ?
                     ORDER BY p.name ASC
                 """, (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"))
                 
@@ -337,49 +362,63 @@ class GameLibrary:
                     print("\nEnter new values (or press Enter to keep current value)")
                     
                     try:
-                        updates = {}
+                        physical_updates = {}
+                        purchase_updates = {}
+                        
                         name = input(f'Name [{games[choice][1]}]: ').strip()
                         if name:
-                            updates['name'] = name
+                            physical_updates['name'] = name
                         
                         console = input(f'Console [{games[choice][2]}]: ').strip()
                         if console:
-                            updates['console'] = console
+                            physical_updates['console'] = console
                         
                         condition = input(f'Condition [{games[choice][3]}]: ').strip()
                         if condition:
-                            updates['condition'] = condition
+                            purchase_updates['condition'] = condition
                         
                         source = input(f'Source [{games[choice][4]}]: ').strip()
                         if source:
-                            updates['source'] = source
+                            purchase_updates['source'] = source
                         
                         price = input(f'Price [{games[choice][5]}]: ').strip()
                         if price:
-                            updates['price'] = price
+                            purchase_updates['price'] = price
                         
                         date = self._get_valid_date('Date', games[choice][6])
                         if date != games[choice][6]:
-                            updates['acquisition_date'] = date
+                            purchase_updates['acquisition_date'] = date
 
                     except EOFError:
                         print("\nInput cancelled")
                         return
 
-                    if not updates:
+                    if not physical_updates and not purchase_updates:
                         print("No changes made")
                         return
 
-                    set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
-                    values = list(updates.values()) + [game_id]
-                    
-                    cursor.execute(f"""
-                        UPDATE physical_games
-                        SET {set_clause}
-                        WHERE id = ?
-                    """, values)
+                    # Update physical_games if needed
+                    if physical_updates:
+                        set_clause = ", ".join(f"{k} = ?" for k in physical_updates.keys())
+                        values = list(physical_updates.values()) + [game_id]
+                        cursor.execute(f"""
+                            UPDATE physical_games
+                            SET {set_clause}
+                            WHERE id = ?
+                        """, values)
 
-                    if updates.get('name') or updates.get('console'):
+                    # Update purchased_games if needed
+                    if purchase_updates:
+                        set_clause = ", ".join(f"{k} = ?" for k in purchase_updates.keys())
+                        values = list(purchase_updates.values()) + [game_id]
+                        cursor.execute(f"""
+                            UPDATE purchased_games
+                            SET {set_clause}
+                            WHERE physical_game = ?
+                        """, values)
+
+                    # Update pricecharting_games if name/console changed
+                    if physical_updates.get('name') or physical_updates.get('console'):
                         cursor.execute("""
                             UPDATE pricecharting_games
                             SET name = COALESCE(?, name),
@@ -389,7 +428,7 @@ class GameLibrary:
                                 FROM physical_games_pricecharting_games
                                 WHERE physical_game = ?
                             )
-                        """, (updates.get('name'), updates.get('console'), game_id))
+                        """, (physical_updates.get('name'), physical_updates.get('console'), game_id))
 
                     print("Changes saved")
 

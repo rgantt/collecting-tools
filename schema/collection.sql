@@ -3,12 +3,8 @@ BEGIN TRANSACTION;
 CREATE TABLE IF NOT EXISTS physical_games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    acquisition_date DATE NOT NULL CHECK (acquisition_date IS strftime('%Y-%m-%d', acquisition_date)),
-    source TEXT,
-    price DECIMAL,
     name TEXT NOT NULL,
-    console TEXT NOT NULL,
-    condition TEXT
+    console TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS backup_files (
@@ -66,16 +62,36 @@ SELECT
 	z.pricecharting_id,
 	max(p.retrieve_time) as retrieve_time,
 	p.price,
-	p.condition
+	pg.condition
 FROM physical_games g
+JOIN purchased_games pg
+	ON g.id = pg.physical_game
 JOIN physical_games_pricecharting_games j
 	ON g.id = j.physical_game
 JOIN pricecharting_games z
 	ON j.pricecharting_game = z.id
 LEFT JOIN pricecharting_prices p
 	ON z.pricecharting_id = p.pricecharting_id
-	AND p.condition = g.condition
+	AND p.condition = pg.condition
 GROUP BY g.id
 ORDER BY g.name ASC;
+
+CREATE TABLE IF NOT EXISTS purchased_games (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    physical_game INTEGER NOT NULL,
+    acquisition_date DATE NOT NULL CHECK (acquisition_date IS strftime('%Y-%m-%d', acquisition_date)),
+    source TEXT,
+    price DECIMAL,
+    condition TEXT,
+    
+    FOREIGN KEY (physical_game) REFERENCES physical_games (id)
+);
+
+CREATE TABLE IF NOT EXISTS wanted_games (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    physical_game INTEGER NOT NULL,
+    
+    FOREIGN KEY (physical_game) REFERENCES physical_games (id)
+);
 
 COMMIT;
