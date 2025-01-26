@@ -46,14 +46,14 @@ What would you like to do? (Ctrl + D to exit) search
 Enter search term: mario
 
 Found 3 games:
-[0] Super Mario 64 (N64) - loose condition
-    $52.99 (bought for $45.99 from eBay on 2024-03-15)
+[0] Super Mario 64 (N64)
+    complete: $52.99 (bought for $45.99 from eBay on 2024-03-15)
 
-[1] Mario Kart 8 Deluxe (Switch) - CIB condition
-    $45.00 (bought for $39.99 from GameStop on 2024-02-01)
+[1] Mario Kart 8 Deluxe (Switch)
+    complete: $45.00 (bought for $39.99 from GameStop on 2024-02-01)
 
 [2] Super Mario RPG (Switch) - WISHLIST
-    Current market price: $54.99
+    loose: $49.99 | complete: $54.99 | new: $59.99
 
 Select a game to edit (or press Enter to cancel): 0
 Enter new values (or press Enter to keep current value)
@@ -89,25 +89,29 @@ What would you like to do? (Ctrl + D to exit) wishlist
 Enter search term (or press Enter to show all): mario
 
 Wishlist items matching mario:
-Super Mario RPG (Switch)
-    Current market price: $54.99
+[0] Super Mario RPG (Switch)
+    loose: $49.99 | complete: $54.99 | new: $59.99
 
-Mario Kart 9 (Switch)
-    Current market price: no current price
+[1] Mario Kart 9 (Switch)
+    no current prices
+
+Select a game to edit (or press Enter to cancel): 
 
 # Or view entire wishlist by pressing Enter at the search prompt:
 What would you like to do? (Ctrl + D to exit) wishlist
 Enter search term (or press Enter to show all): 
 
 Wishlist items:
-Advance Wars 1+2 Re-Boot Camp (Switch)
-    Current market price: $49.99
+[0] Advance Wars 1+2 Re-Boot Camp (Switch)
+    loose: $44.99 | complete: $49.99 | new: $59.99
 
-Mario Kart 9 (Switch)
-    Current market price: no current price
+[1] Mario Kart 9 (Switch)
+    no current prices
 
-Super Mario RPG (Switch)
-    Current market price: $54.99
+[2] Super Mario RPG (Switch)
+    loose: $49.99 | complete: $54.99 | new: $59.99
+
+Select a game to edit (or press Enter to cancel): 
 ```
 
 #### help - Display available commands
