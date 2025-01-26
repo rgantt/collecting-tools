@@ -555,7 +555,6 @@ class GameLibrary:
             print(f"Database error: {e}")
 
     def view_wishlist(self) -> None:
-        """Display all games in the wishlist, optionally filtered by a search term."""
         try:
             search_term = input('Enter search term (or press Enter to show all): ').strip()
         except EOFError:
@@ -570,27 +569,42 @@ class GameLibrary:
                     SELECT 
                         p.name,
                         p.console,
-                        COALESCE(
-                            (
-                                SELECT price 
-                                FROM pricecharting_prices pp 
-                                JOIN physical_games_pricecharting_games pcg ON pp.pricecharting_id = pcg.pricecharting_game
-                                WHERE pcg.physical_game = p.id
-                                AND pp.condition = 'complete'
-                                ORDER BY pp.retrieve_time DESC 
-                                LIMIT 1
-                            ),
-                            NULL
-                        ) as current_price
+                        (
+                            SELECT price 
+                            FROM pricecharting_prices pp 
+                            WHERE pp.pricecharting_id = pc.pricecharting_id 
+                            AND pp.condition = 'complete'
+                            ORDER BY pp.retrieve_time DESC 
+                            LIMIT 1
+                        ) as price_complete,
+                        (
+                            SELECT price 
+                            FROM pricecharting_prices pp 
+                            WHERE pp.pricecharting_id = pc.pricecharting_id 
+                            AND pp.condition = 'loose'
+                            ORDER BY pp.retrieve_time DESC 
+                            LIMIT 1
+                        ) as price_loose,
+                        (
+                            SELECT price 
+                            FROM pricecharting_prices pp 
+                            WHERE pp.pricecharting_id = pc.pricecharting_id 
+                            AND pp.condition = 'new'
+                            ORDER BY pp.retrieve_time DESC 
+                            LIMIT 1
+                        ) as price_new
                     FROM physical_games p
                     JOIN wanted_games w ON p.id = w.physical_game
+                    LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
+                    LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
                     WHERE 1=1
                 """
-                params = []
                 
                 if search_term:
                     query += " AND (LOWER(p.name) LIKE LOWER(?) OR LOWER(p.console) LIKE LOWER(?))"
-                    params.extend([f'%{search_term}%', f'%{search_term}%'])
+                    params = [f'%{search_term}%', f'%{search_term}%']
+                else:
+                    params = []
                 
                 query += " ORDER BY p.name ASC"
                 
@@ -605,14 +619,21 @@ class GameLibrary:
                     return
 
                 print(f"\nWishlist items{' matching ' + search_term if search_term else ''}:")
-                for name, console, current_price in games:
+                for name, console, price_complete, price_loose, price_new in games:
                     print(f"\n{name} ({console})")
                     try:
-                        price_str = f"${float(current_price):.2f}" if current_price else "no current price"
+                        prices = []
+                        if price_loose:
+                            prices.append(f"loose: ${float(price_loose):.2f}")
+                        if price_complete:
+                            prices.append(f"complete: ${float(price_complete):.2f}")
+                        if price_new:
+                            prices.append(f"new: ${float(price_new):.2f}")
+                        price_str = " | ".join(prices) if prices else "no current prices"
+                        print(f"    {price_str}")
                     except (TypeError, ValueError):
-                        price_str = "no current price"
-                    print(f"    Current market price: {price_str}")
-                    
+                        print(f"    no current prices")
+
         except DatabaseError as e:
             print(f"Failed to retrieve wishlist: {e}")
 
