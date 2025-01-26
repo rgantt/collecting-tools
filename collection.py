@@ -237,6 +237,11 @@ class GameLibrary:
             return
 
         print(f"Retrieving identifiers for {len(games)} games:")
+        
+        # Show initial progress bar at 0%
+        bar_length = 50
+        bar = '-' * bar_length
+        print(f"\rProgress: [{bar}] 0.0% (0/{len(games)})", end='', flush=True)
 
         failed = []
         retrieved = []
@@ -254,7 +259,6 @@ class GameLibrary:
             # Progress bar outside try/except
             processed += 1
             percent = (processed / total) * 100
-            bar_length = 50
             filled = int(bar_length * processed // total)
             bar = '=' * filled + '-' * (bar_length - filled)
             print(f"\rProgress: [{bar}] {percent:.1f}% ({processed}/{total}) - {name}", end='', flush=True)
