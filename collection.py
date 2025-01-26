@@ -567,8 +567,10 @@ class GameLibrary:
                 
                 query = """
                     SELECT 
+                        p.id,
                         p.name,
                         p.console,
+                        pc.pricecharting_id,
                         (
                             SELECT price 
                             FROM pricecharting_prices pp 
@@ -619,8 +621,8 @@ class GameLibrary:
                     return
 
                 print(f"\nWishlist items{' matching ' + search_term if search_term else ''}:")
-                for name, console, price_complete, price_loose, price_new in games:
-                    print(f"\n{name} ({console})")
+                for i, (id, name, console, pc_id, price_complete, price_loose, price_new) in enumerate(games):
+                    print(f"\n[{i}] {name} ({console})")
                     try:
                         prices = []
                         if price_loose:
@@ -633,6 +635,78 @@ class GameLibrary:
                         print(f"    {price_str}")
                     except (TypeError, ValueError):
                         print(f"    no current prices")
+
+                choice = input('\nSelect a game to edit (or press Enter to cancel): ').strip()
+                if not choice:
+                    return
+                    
+                try:
+                    choice = int(choice)
+                    if not 0 <= choice < len(games):
+                        print("Invalid selection")
+                        return
+                except ValueError:
+                    print("Invalid selection")
+                    return
+                
+                # Get the selected game's data
+                game_id = games[choice][0]
+                
+                # Offer to remove from wishlist
+                remove = input('Remove from wishlist? (default: No) [y/N]: ').strip().lower()
+                if remove == 'y':
+                    cursor.execute("""
+                        DELETE FROM wanted_games
+                        WHERE physical_game = ?
+                    """, (game_id,))
+                    print("Game removed from wishlist")
+                    return
+
+                print("\nEnter new values (or press Enter to keep current value)")
+                
+                try:
+                    physical_updates = {}
+                    
+                    name = input(f'Name [{games[choice][1]}]: ').strip()
+                    if name:
+                        physical_updates['name'] = name
+                    
+                    console = input(f'Console [{games[choice][2]}]: ').strip()
+                    if console:
+                        physical_updates['console'] = console
+
+                    if not physical_updates:
+                        print("No changes made")
+                        return
+
+                    # Update physical_games if needed
+                    if physical_updates:
+                        set_clause = ", ".join(f"{k} = ?" for k in physical_updates.keys())
+                        values = list(physical_updates.values()) + [game_id]
+                        cursor.execute(f"""
+                            UPDATE physical_games
+                            SET {set_clause}
+                            WHERE id = ?
+                        """, values)
+
+                    # Update pricecharting_games if name/console changed
+                    if physical_updates.get('name') or physical_updates.get('console'):
+                        cursor.execute("""
+                            UPDATE pricecharting_games
+                            SET name = COALESCE(?, name),
+                                console = COALESCE(?, console)
+                            WHERE id IN (
+                                SELECT pricecharting_game
+                                FROM physical_games_pricecharting_games
+                                WHERE physical_game = ?
+                            )
+                        """, (physical_updates.get('name'), physical_updates.get('console'), game_id))
+
+                    print("Changes saved")
+
+                except (ValueError, EOFError):
+                    print("\nEdit cancelled")
+                    return
 
         except DatabaseError as e:
             print(f"Failed to retrieve wishlist: {e}")
