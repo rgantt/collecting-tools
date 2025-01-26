@@ -11,6 +11,7 @@ add      - Add a game to your library
 search   - Search library
 prices   - Retrieve latest prices
 ids      - Retrieve missing game IDs
+want     - Add a game to the wishlist
 
 What would you like to do? (Ctrl + D to exit) 
 ```
@@ -29,17 +30,28 @@ Date: 2024-03-15
 Game added successfully
 ```
 
+#### want - Add a game to your wishlist
+```bash
+What would you like to do? (Ctrl + D to exit) want
+Title: Grandia II
+Console: Dreamcast
+Game added to wishlist successfully
+```
+
 #### search - Search and edit games in your collection
 ```bash
 What would you like to do? (Ctrl + D to exit) search
 Enter search term: mario
 
-Found 2 games:
+Found 3 games:
 [0] Super Mario 64 (N64) - loose condition
     $52.99 (bought for $45.99 from eBay on 2024-03-15)
 
 [1] Mario Kart 8 Deluxe (Switch) - CIB condition
     $45.00 (bought for $39.99 from GameStop on 2024-02-01)
+
+[2] Super Mario RPG (Switch) - WISHLIST
+    Current market price: $54.99
 
 Select a game to edit (or press Enter to cancel): 0
 Enter new values (or press Enter to keep current value)
@@ -77,7 +89,8 @@ Saved 5 records to database
   - Condition (loose, CIB, new)
   - Purchase source and price
   - Acquisition date
-- Search your collection by name, console, or condition
+- Maintain a wishlist of games you want to acquire
+- Search your collection and wishlist by name or console
 - Edit existing entries
 - Automatically fetch and track current market prices from PriceCharting
 - Integration with PriceCharting for game identification and price tracking
@@ -89,3 +102,4 @@ Saved 5 records to database
 - Leave input blank and press Enter to keep existing values when editing
 - The prices command can be limited to process a specific number of games
 - Market prices are fetched from PriceCharting.com's database
+- Wishlist items only require title and console
