@@ -363,17 +363,6 @@ class GameLibrary:
 
         try:
             with sqlite3.connect(self.db_path) as con:
-                # First, let's debug by printing all games in wanted_games
-                cursor = con.execute("""
-                    SELECT p.name, p.console, w.id 
-                    FROM physical_games p
-                    JOIN wanted_games w ON p.id = w.physical_game
-                """)
-                wanted = cursor.fetchall()
-                print("\nWanted games in database:")
-                for name, console, wid in wanted:
-                    print(f"- {name} ({console}) [wanted_id: {wid}]")
-
                 # Now the main search query
                 cursor = con.execute("""
                     SELECT 
@@ -390,12 +379,34 @@ class GameLibrary:
                                 SELECT price 
                                 FROM pricecharting_prices pp 
                                 WHERE pp.pricecharting_id = pc.pricecharting_id 
-                                AND pp.condition = COALESCE(pg.condition, 'complete')
+                                AND pp.condition = 'complete'
                                 ORDER BY pp.retrieve_time DESC 
                                 LIMIT 1
                             ), 
                             NULL
-                        ) as current_price,
+                        ) as current_price_complete,
+                        COALESCE(
+                            (
+                                SELECT price 
+                                FROM pricecharting_prices pp 
+                                WHERE pp.pricecharting_id = pc.pricecharting_id 
+                                AND pp.condition = 'loose'
+                                ORDER BY pp.retrieve_time DESC 
+                                LIMIT 1
+                            ), 
+                            NULL
+                        ) as current_price_loose,
+                        COALESCE(
+                            (
+                                SELECT price 
+                                FROM pricecharting_prices pp 
+                                WHERE pp.pricecharting_id = pc.pricecharting_id 
+                                AND pp.condition = 'new'
+                                ORDER BY pp.retrieve_time DESC 
+                                LIMIT 1
+                            ), 
+                            NULL
+                        ) as current_price_new,
                         CASE WHEN w.id IS NOT NULL THEN 1 ELSE 0 END as wanted
                     FROM physical_games p
                     LEFT JOIN purchased_games pg ON p.id = pg.physical_game
@@ -415,21 +426,28 @@ class GameLibrary:
                     return
 
                 print(f"\nFound {len(games)} games:")
-                for i, (id, name, console, condition, source, price, date, pc_id, current_price, wanted) in enumerate(games):
+                for i, (id, name, console, condition, source, price, date, pc_id, price_complete, price_loose, price_new, wanted) in enumerate(games):
                     try:
                         if wanted:
                             print(f"[{i}] {name} ({console}) - WISHLIST")
-                            market_price = f"${float(current_price):.2f}" if current_price else "no current price"
-                            print(f"    Current market price: {market_price}")
+                            prices = []
+                            if price_loose:
+                                prices.append(f"loose: ${float(price_loose):.2f}")
+                            if price_complete:
+                                prices.append(f"complete: ${float(price_complete):.2f}")
+                            if price_new:
+                                prices.append(f"new: ${float(price_new):.2f}")
+                            market_prices = " | ".join(prices) if prices else "no current prices"
+                            print(f"    {market_prices}")
                         else:
                             purchase_price = f"${float(price):.2f}" if price else "no price"
-                            market_price = f"${float(current_price):.2f}" if current_price else "no current price"
-                            print(f"[{i}] {name} ({console}) - {condition} condition")
+                            market_price = f"{condition}: ${float(price_complete):.2f}" if price_complete else "no current price"
+                            print(f"[{i}] {name} ({console})")
                             print(f"    {market_price} (bought for {purchase_price} from {source} on {date})")
                     except (TypeError, ValueError) as e:
                         if wanted:
                             print(f"[{i}] {name} ({console}) - WISHLIST")
-                            print(f"    Current market price: no current price")
+                            print(f"    Current market prices: no current prices")
                         else:
                             print(f"[{i}] {name} ({console})")
                             print(f"    Error displaying price info: {e}")
