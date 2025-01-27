@@ -467,7 +467,16 @@ class GameLibrary:
                             print(f"    {market_prices}")
                         else:
                             purchase_price = f"${float(price):.2f}" if price else "no price"
-                            market_price = f"{condition}: ${float(price_complete):.2f}" if price_complete else "no current price"
+                            # Fix: Use the correct price based on condition
+                            current_price = None
+                            if condition and condition.lower() == 'new':
+                                current_price = price_new
+                            elif condition and condition.lower() == 'complete':
+                                current_price = price_complete
+                            elif condition and condition.lower() == 'loose':
+                                current_price = price_loose
+                            
+                            market_price = f"{condition}: ${float(current_price):.2f}" if current_price else "no current price"
                             print(f"[{i}] {name} ({console})")
                             print(f"    {market_price} (bought for {purchase_price} from {source} on {date})")
                     except (TypeError, ValueError) as e:
