@@ -1156,25 +1156,20 @@ class GameLibrary:
                 
                 if recent_collection:
                     print("\nLatest Collection Additions:")
-                    print("--------------------------")
                     for name, console, condition, source, purchase_price, date, current_price in recent_collection:
-                        print(f"\n{name} ({console})")
-                        print(f"  Added: {date}")
-                        print(f"  Condition: {condition}")
-                        print(f"  Source: {source}")
                         try:
-                            if purchase_price:
-                                print(f"  Purchase price: ${float(purchase_price):.2f}")
-                            if current_price:
-                                print(f"  Current value: ${float(current_price):.2f}")
+                            purchase_str = f"${float(purchase_price):.2f}" if purchase_price else "no price"
+                            current_str = f"${float(current_price):.2f}" if current_price else "no current price"
+                            print(f"\n{name} ({console})")
+                            print(f"    {current_str} (bought for {purchase_str} from {source} on {date})")
                         except (TypeError, ValueError):
-                            pass
+                            print(f"\n{name} ({console})")
+                            print(f"    Error displaying price info")
                 else:
                     print("\nNo recent additions to collection.")
 
                 if recent_wishlist:
                     print("\nLatest Wishlist Additions:")
-                    print("-------------------------")
                     for name, console, _, price_complete, price_loose, price_new in recent_wishlist:
                         print(f"\n{name} ({console})")
                         try:
@@ -1185,14 +1180,10 @@ class GameLibrary:
                                 prices.append(f"complete: ${float(price_complete):.2f}")
                             if price_new:
                                 prices.append(f"new: ${float(price_new):.2f}")
-                            if prices:
-                                print("  Current prices:")
-                                for price in prices:
-                                    print(f"    {price}")
-                            else:
-                                print("  No current prices available")
+                            price_str = " | ".join(prices) if prices else "no current prices"
+                            print(f"    {price_str}")
                         except (TypeError, ValueError):
-                            print("  No current prices available")
+                            print(f"    no current prices")
                 else:
                     print("\nNo recent additions to wishlist.")
 
