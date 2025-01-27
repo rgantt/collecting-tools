@@ -12,6 +12,9 @@ search   - Search library
 prices   - Retrieve latest prices
 want     - Add a game to the wishlist
 wishlist - View your wishlist
+value    - Display collection value statistics
+distribution - Display collection distribution by console
+recent   - Display recently added games
 help     - Display available commands
 
 What would you like to do? (Ctrl + D to exit) 
@@ -87,6 +90,89 @@ Remove from wishlist? (default: No) [y/N]: y
 Game removed from wishlist
 ```
 
+#### value - Display collection value statistics
+```bash
+What would you like to do? (Ctrl + D to exit) value
+
+Collection Value Statistics
+==========================
+Total Purchase Value: $2,450.75
+Total Market Value:   $3,125.50
+Overall ROI:         +27.5%
+
+Top 5 Most Valuable Games
+=======================
+Earthbound (SNES) - complete
+  Current: $399.99 (bought: $299.99)
+Chrono Trigger (SNES) - complete
+  Current: $349.99 (bought: $275.00)
+Panzer Dragoon Saga (Saturn) - complete
+  Current: $299.99 (bought: $250.00)
+
+Biggest Price Changes (Last 3 Months)
+===================================
+Final Fantasy VII (PS1) - complete
+  $89.99 → $129.99 (+44.4%)
+Pokemon Red (GB) - loose
+  $45.99 → $59.99 (+30.4%)
+```
+
+#### distribution - Display collection distribution by console
+```bash
+What would you like to do? (Ctrl + D to exit) distribution
+
+Total Games in Collection: 125
+
+Distribution by Console
+======================
+Console  | Count | Percent | Most Expensive Game
+---------|-------|---------|-------------------
+Switch   |    45 |   36.0% | Xenoblade 3 CE (new): $89.99
+PS5      |    25 |   20.0% | Demon's Souls CE (new): $119.99
+SNES     |    20 |   16.0% | Earthbound (complete): $399.99
+PS4      |    15 |   12.0% | Persona 5 Royal CE (new): $149.99
+N64      |    12 |    9.6% | Conker's Bad Fur Day (complete): $249.99
+GB/GBC   |     8 |    6.4% | Pokemon Crystal (complete): $199.99
+```
+
+#### recent - Display recently added games
+```bash
+What would you like to do? (Ctrl + D to exit) recent
+
+Recently Added Games
+===================
+
+Latest Collection Additions:
+--------------------------
+Final Fantasy XVI (PS5)
+  Added: 2024-03-15
+  Condition: new
+  Source: Amazon
+  Purchase price: $69.99
+  Current value: $54.99
+
+Mario Wonder (Switch)
+  Added: 2024-03-10
+  Condition: complete
+  Source: GameStop
+  Purchase price: $59.99
+  Current value: $54.99
+
+Latest Wishlist Additions:
+-------------------------
+Persona 3 Reload (PS5)
+  Current prices:
+    loose: $44.99
+    complete: $54.99
+    new: $69.99
+
+Final Fantasy VII Rebirth (PS5)
+  Current prices:
+    loose: $49.99
+    complete: $59.99
+    new: $69.99
+```
+
 #### help - Display available commands
 ```bash
 What would you like to do? (Ctrl + D to exit) help
@@ -98,6 +184,9 @@ prices   - Retrieve latest prices
 ids      - Retrieve missing game IDs
 want     - Add a game to the wishlist
 wishlist - View your wishlist
+value    - Display collection value statistics
+distribution - Display collection distribution by console
+recent   - Display recently added games
 help     - Display available commands
 ```
 
@@ -114,6 +203,9 @@ help     - Display available commands
 - Edit existing entries
 - Automatically fetch and track current market prices from PriceCharting
 - Integration with PriceCharting for game identification and price tracking
+- View collection value statistics and ROI
+- See distribution of games across different consoles
+- Track recently added games to both collection and wishlist
 
 ### Tips
 
