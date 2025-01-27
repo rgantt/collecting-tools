@@ -213,6 +213,20 @@ class GameLibrary:
 
     def retrieve_prices(self):
         try:
+            # First get total count of eligible games
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT pricecharting_id)
+                    FROM latest_prices
+                    WHERE retrieve_time < datetime('now', '-7 days')
+                    OR retrieve_time IS NULL
+                    ORDER BY name ASC
+                """)
+                total_eligible = cursor.fetchone()[0]
+            
+            print(f"\nFound {total_eligible} games eligible for price updates")
+            
             max_prices = input('Maximum prices to retrieve (optional): ')
             max_prices = int(max_prices) if max_prices else None
         except (ValueError, EOFError):
