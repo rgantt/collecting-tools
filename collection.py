@@ -288,18 +288,40 @@ class GameLibrary:
 
     def want_game(self) -> None:
         """Add a new game to the wishlist interactively."""
-        try:
-            title = input('Title: ').strip()
-            console = input('Console: ').strip()
-            
-            if not title or not console:
-                print("Title and console are required")
+        previous_game = None
+        while True:  # Loop to allow retrying if ID retrieval fails
+            try:
+                title = input(f'Title{f" [{previous_game[0]}]" if previous_game else ""}: ').strip() or (previous_game[0] if previous_game else "")
+                console = input(f'Console{f" [{previous_game[1]}]" if previous_game else ""}: ').strip() or (previous_game[1] if previous_game else "")
+                
+                if not title or not console:
+                    print("Title and console are required")
+                    return
+                
+            except EOFError:
+                print("\nInput cancelled")
                 return
-            
-        except EOFError:
-            print("\nInput cancelled")
-            return
 
+            # Try to retrieve the pricecharting ID before adding to database
+            try:
+                # Using -1 as temporary ID since the game isn't in DB yet
+                id_data = get_game_id(-1, title, console)
+                break  # If successful, exit the loop and proceed with adding the game
+            except ValueError as err:
+                print(f"\nWarning: Could not retrieve price tracking ID: {err}")
+                choice = input("Would you like to (e)dit the game info, or (c)ontinue without price tracking? [e/c]: ").lower()
+                if choice == 'c':
+                    id_data = None
+                    break
+                elif choice == 'e':
+                    print("\nPlease enter the game information again:")
+                    previous_game = (title, console)  # Store the current game data for the next iteration
+                    continue
+                else:
+                    print("Invalid choice, cancelling game addition")
+                    return
+
+        # Move this try block outside the while loop and fix indentation
         try:
             with self._db_connection() as conn:
                 cursor = conn.cursor()
@@ -320,21 +342,36 @@ class GameLibrary:
                     VALUES (?)
                 """, (physical_id,))
 
-                # Insert into pricecharting_games
-                cursor.execute("""
-                    INSERT INTO pricecharting_games (name, console)
-                    VALUES (?, ?)
-                """, (title, console))
-                
-                pricecharting_id = cursor.lastrowid
+                # Only add pricecharting info if we successfully retrieved an ID
+                if id_data:
+                    # First check if we already have this pricecharting ID in our database
+                    cursor.execute("""
+                        SELECT id FROM pricecharting_games 
+                        WHERE pricecharting_id = ?
+                    """, (id_data['pricecharting_id'],))
+                    
+                    existing_pc_game = cursor.fetchone()
+                    
+                    if existing_pc_game:
+                        # If we already have this game in pricecharting_games, just link to it
+                        pricecharting_id = existing_pc_game[0]
+                    else:
+                        # Otherwise create a new pricecharting_games entry
+                        cursor.execute("""
+                            INSERT INTO pricecharting_games (name, console, pricecharting_id)
+                            VALUES (?, ?, ?)
+                        """, (id_data['name'], id_data['console'], id_data['pricecharting_id']))
+                        pricecharting_id = cursor.lastrowid
 
-                cursor.execute("""
-                    INSERT INTO physical_games_pricecharting_games
-                    (physical_game, pricecharting_game)
-                    VALUES (?, ?)
-                """, (physical_id, pricecharting_id))
-                
-                print("Game added to wishlist successfully")
+                    cursor.execute("""
+                        INSERT INTO physical_games_pricecharting_games
+                        (physical_game, pricecharting_game)
+                        VALUES (?, ?)
+                    """, (physical_id, pricecharting_id))
+                    
+                    print("Game added to wishlist successfully with price tracking enabled")
+                else:
+                    print("Game added to wishlist successfully without price tracking")
                 
         except DatabaseError as e:
             print(f"Failed to add game to wishlist: {e}")
@@ -453,10 +490,93 @@ class GameLibrary:
                 
                 # Get the selected game's data
                 game_id = games[choice][0]
-                wanted = games[choice][9]  # The 'wanted' flag from our query
+                wanted = games[choice][11]  # The 'wanted' flag from our query
                 
+                delete = input('Delete game from collection? (default: No) [y/N]: ').strip().lower()
+                if delete == 'y':
+                    if wanted:
+                        # For wishlist items, first delete from wanted_games
+                        cursor.execute("""
+                            DELETE FROM wanted_games
+                            WHERE physical_game = ?
+                        """, (game_id,))
+                        
+                        # Check if there are any remaining references in purchased_games
+                        cursor.execute("""
+                            SELECT COUNT(*) 
+                            FROM purchased_games 
+                            WHERE physical_game = ?
+                        """, (game_id,))
+                        has_references = cursor.fetchone()[0] > 0
+                        
+                        if not has_references:
+                            # If no references remain, clean up the other tables
+                            cursor.execute("""
+                                DELETE FROM physical_games_pricecharting_games
+                                WHERE physical_game = ?
+                            """, (game_id,))
+                            
+                            cursor.execute("""
+                                DELETE FROM physical_games
+                                WHERE id = ?
+                            """, (game_id,))
+                            
+                            # Clean up orphaned pricecharting_games entries
+                            cursor.execute("""
+                                DELETE FROM pricecharting_games
+                                WHERE id NOT IN (
+                                    SELECT DISTINCT pricecharting_game 
+                                    FROM physical_games_pricecharting_games
+                                )
+                            """)
+                            print("Game removed from wishlist")
+                        else:
+                            print("Game removed from wishlist but kept in collection")
+                    else:
+                        # First delete from purchased_games
+                        cursor.execute("""
+                            DELETE FROM purchased_games
+                            WHERE physical_game = ?
+                        """, (game_id,))
+                        
+                        # Check if there are any remaining references to this physical_game
+                        cursor.execute("""
+                            SELECT COUNT(*) 
+                            FROM wanted_games 
+                            WHERE physical_game = ?
+                        """, (game_id,))
+                        has_references = cursor.fetchone()[0] > 0
+                        
+                        if not has_references:
+                            # If no references remain, delete the pricecharting link
+                            cursor.execute("""
+                                DELETE FROM physical_games_pricecharting_games
+                                WHERE physical_game = ?
+                            """, (game_id,))
+                            
+                            # Delete from physical_games
+                            cursor.execute("""
+                                DELETE FROM physical_games
+                                WHERE id = ?
+                            """, (game_id,))
+                            
+                            # Clean up orphaned pricecharting_games entries
+                            cursor.execute("""
+                                DELETE FROM pricecharting_games
+                                WHERE id NOT IN (
+                                    SELECT DISTINCT pricecharting_game 
+                                    FROM physical_games_pricecharting_games
+                                )
+                            """)
+                            
+                            print("Game completely deleted from collection")
+                        else:
+                            # If references exist (e.g. in wishlist), only remove from purchased_games
+                            print("Game removed from collection but kept in wishlist")
+                    return
+
                 # Inside the edit section after selecting a game
-                if wanted:  # Add this new section for wishlist items
+                if wanted:  # This section will only show for actual wishlist items
                     remove = input('Remove from wishlist? (default: No) [y/N]: ').strip().lower()
                     if remove == 'y':
                         cursor.execute("""
