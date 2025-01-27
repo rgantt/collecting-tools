@@ -102,6 +102,9 @@ class GameLibrary:
         self.register("prices", "Retrieve latest prices", self.retrieve_prices)
         self.register("want", "Add a game to the wishlist", self.want_game)
         self.register("wishlist", "View your wishlist", self.view_wishlist)
+        self.register("value", "Display collection value statistics", self.display_value_stats)
+        self.register("distribution", "Display collection distribution by console", self.display_distribution)
+        self.register("recent", "Display recently added games", self.display_recent)
         self.register("help", "Display available commands", self.display_commands)
 
     def register(self, command: str, description: str, func: Callable[[], None]):
@@ -842,6 +845,359 @@ class GameLibrary:
 
         except DatabaseError as e:
             print(f"Failed to retrieve wishlist: {e}")
+
+    def display_value_stats(self):
+        """Display various statistics about collection value."""
+        try:
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get total purchase value
+                cursor.execute("""
+                    SELECT COALESCE(SUM(CAST(price AS DECIMAL)), 0) as total_purchase
+                    FROM purchased_games
+                """)
+                total_purchase = cursor.fetchone()[0]
+
+                # Get current market value based on each game's condition
+                cursor.execute("""
+                    WITH latest_prices AS (
+                        SELECT 
+                            pricecharting_id,
+                            condition,
+                            price,
+                            ROW_NUMBER() OVER (PARTITION BY pricecharting_id, condition ORDER BY retrieve_time DESC) as rn
+                        FROM pricecharting_prices
+                    )
+                    SELECT COALESCE(SUM(CAST(lp.price AS DECIMAL)), 0) as total_market
+                    FROM purchased_games pg
+                    JOIN physical_games p ON pg.physical_game = p.id
+                    JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
+                    JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+                    LEFT JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id 
+                        AND LOWER(pg.condition) = LOWER(lp.condition)
+                        AND lp.rn = 1
+                """)
+                total_market = cursor.fetchone()[0]
+
+                # Get top 5 most expensive games
+                cursor.execute("""
+                    WITH latest_prices AS (
+                        SELECT 
+                            pricecharting_id,
+                            condition,
+                            price,
+                            ROW_NUMBER() OVER (PARTITION BY pricecharting_id, condition ORDER BY retrieve_time DESC) as rn
+                        FROM pricecharting_prices
+                    )
+                    SELECT 
+                        p.name,
+                        p.console,
+                        pg.condition,
+                        CAST(pg.price AS DECIMAL) as purchase_price,
+                        CAST(lp.price AS DECIMAL) as current_price
+                    FROM purchased_games pg
+                    JOIN physical_games p ON pg.physical_game = p.id
+                    JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
+                    JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+                    LEFT JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id 
+                        AND LOWER(pg.condition) = LOWER(lp.condition)
+                        AND lp.rn = 1
+                    WHERE lp.price IS NOT NULL
+                    ORDER BY CAST(lp.price AS DECIMAL) DESC
+                    LIMIT 5
+                """)
+                top_expensive = cursor.fetchall()
+
+                # Get top 10 games with biggest price changes in last 3 months
+                cursor.execute("""
+                    WITH latest_prices AS (
+                        SELECT 
+                            pricecharting_id,
+                            condition,
+                            price,
+                            retrieve_time,
+                            ROW_NUMBER() OVER (PARTITION BY pricecharting_id, condition ORDER BY retrieve_time DESC) as rn
+                        FROM pricecharting_prices
+                        WHERE retrieve_time >= date('now', '-3 months')
+                    ),
+                    oldest_prices AS (
+                        SELECT 
+                            pricecharting_id,
+                            condition,
+                            price,
+                            retrieve_time,
+                            ROW_NUMBER() OVER (PARTITION BY pricecharting_id, condition ORDER BY retrieve_time ASC) as rn
+                        FROM pricecharting_prices
+                        WHERE retrieve_time >= date('now', '-3 months')
+                    )
+                    SELECT 
+                        p.name,
+                        p.console,
+                        pg.condition,
+                        CAST(op.price AS DECIMAL) as old_price,
+                        CAST(lp.price AS DECIMAL) as new_price,
+                        CAST(lp.price AS DECIMAL) - CAST(op.price AS DECIMAL) as price_change,
+                        ROUND(((CAST(lp.price AS DECIMAL) - CAST(op.price AS DECIMAL)) / CAST(op.price AS DECIMAL) * 100), 2) as percent_change
+                    FROM purchased_games pg
+                    JOIN physical_games p ON pg.physical_game = p.id
+                    JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
+                    JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+                    JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id 
+                        AND LOWER(pg.condition) = LOWER(lp.condition)
+                        AND lp.rn = 1
+                    JOIN oldest_prices op ON pc.pricecharting_id = op.pricecharting_id 
+                        AND LOWER(pg.condition) = LOWER(op.condition)
+                        AND op.rn = 1
+                    WHERE op.price != lp.price
+                    ORDER BY ABS(CAST(lp.price AS DECIMAL) - CAST(op.price AS DECIMAL)) DESC
+                    LIMIT 10
+                """)
+                biggest_changes = cursor.fetchall()
+
+                # Display results
+                print("\nCollection Value Statistics")
+                print("==========================")
+                print(f"Total Purchase Value: ${total_purchase:.2f}")
+                print(f"Total Market Value:   ${total_market:.2f}")
+                
+                if total_purchase > 0:
+                    roi = ((total_market - total_purchase) / total_purchase) * 100
+                    print(f"Overall ROI:         {roi:+.1f}%")
+
+                if top_expensive:
+                    print("\nTop 5 Most Valuable Games")
+                    print("=======================")
+                    for name, console, condition, purchase, current in top_expensive:
+                        print(f"{name} ({console}) - {condition}")
+                        print(f"  Current: ${current:.2f}" + (f" (bought: ${purchase:.2f})" if purchase else ""))
+
+                if biggest_changes:
+                    print("\nBiggest Price Changes (Last 3 Months)")
+                    print("===================================")
+                    for name, console, condition, old, new, change, pct in biggest_changes:
+                        print(f"{name} ({console}) - {condition}")
+                        print(f"  ${old:.2f} → ${new:.2f} ({pct:+.1f}%)")
+
+        except DatabaseError as e:
+            print(f"Failed to retrieve collection statistics: {e}")
+
+    def display_distribution(self):
+        """Display distribution of games across consoles."""
+        try:
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get total number of games
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM physical_games p
+                    JOIN purchased_games pg ON p.id = pg.physical_game
+                """)
+                total_games = cursor.fetchone()[0]
+
+                # Get distribution by console with current most expensive game
+                cursor.execute("""
+                    WITH latest_prices AS (
+                        SELECT 
+                            pricecharting_id,
+                            condition,
+                            price,
+                            ROW_NUMBER() OVER (PARTITION BY pricecharting_id, condition ORDER BY retrieve_time DESC) as rn
+                        FROM pricecharting_prices
+                    ),
+                    console_games AS (
+                        SELECT 
+                            p.console,
+                            COUNT(*) as game_count,
+                            ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) as percentage
+                        FROM physical_games p
+                        JOIN purchased_games pg ON p.id = pg.physical_game
+                        GROUP BY p.console
+                    ),
+                    most_expensive AS (
+                        SELECT 
+                            p.console,
+                            p.name,
+                            pg.condition,
+                            CAST(lp.price AS DECIMAL) as current_price,
+                            ROW_NUMBER() OVER (PARTITION BY p.console ORDER BY CAST(lp.price AS DECIMAL) DESC) as rn
+                        FROM physical_games p
+                        JOIN purchased_games pg ON p.id = pg.physical_game
+                        JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
+                        JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+                        JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id 
+                            AND LOWER(pg.condition) = LOWER(lp.condition)
+                            AND lp.rn = 1
+                    )
+                    SELECT 
+                        cg.console,
+                        cg.game_count,
+                        cg.percentage,
+                        me.name as most_expensive_game,
+                        me.condition,
+                        me.current_price
+                    FROM console_games cg
+                    LEFT JOIN most_expensive me ON cg.console = me.console AND me.rn = 1
+                    ORDER BY cg.game_count DESC, cg.console
+                """)
+                distributions = cursor.fetchall()
+
+                # Display results
+                print(f"\nTotal Games in Collection: {total_games}")
+                print("\nDistribution by Console")
+                print("======================")
+                
+                # Calculate column widths
+                console_width = max(len("Console"), max(len(d[0]) for d in distributions))
+                count_width = max(len("Count"), max(len(str(d[1])) for d in distributions))
+                percent_width = max(len("Percent"), max(len(f"{d[2]}%") for d in distributions))
+                
+                # Print header
+                header = (
+                    f"{'Console':<{console_width}} | "
+                    f"{'Count':>{count_width}} | "
+                    f"{'Percent':>{percent_width}} | "
+                    f"Most Expensive Game"
+                )
+                print(header)
+                print("-" * len(header))
+                
+                # Print each row
+                for console, count, percentage, game, condition, price in distributions:
+                    most_expensive = (
+                        f"{game} ({condition}): ${price:.2f}" if game and price
+                        else "No price data"
+                    )
+                    print(
+                        f"{console:<{console_width}} | "
+                        f"{count:>{count_width}} | "
+                        f"{percentage:>{percent_width-1}}% | "
+                        f"{most_expensive}"
+                    )
+
+        except DatabaseError as e:
+            print(f"Failed to retrieve collection distribution: {e}")
+
+    def display_recent(self):
+        """Display the 10 most recently added games to both collection and wishlist."""
+        try:
+            with self._db_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get recent collection additions
+                cursor.execute("""
+                    WITH latest_prices AS (
+                        SELECT 
+                            pricecharting_id,
+                            condition,
+                            price,
+                            ROW_NUMBER() OVER (PARTITION BY pricecharting_id, condition ORDER BY retrieve_time DESC) as rn
+                        FROM pricecharting_prices
+                    )
+                    SELECT 
+                        p.name,
+                        p.console,
+                        pg.condition,
+                        pg.source,
+                        pg.price as purchase_price,
+                        pg.acquisition_date,
+                        CAST(lp.price AS DECIMAL) as current_price
+                    FROM physical_games p
+                    JOIN purchased_games pg ON p.id = pg.physical_game
+                    LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
+                    LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+                    LEFT JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id 
+                        AND LOWER(pg.condition) = LOWER(lp.condition)
+                        AND lp.rn = 1
+                    ORDER BY pg.acquisition_date DESC
+                    LIMIT 10
+                """)
+                recent_collection = cursor.fetchall()
+
+                # Get recent wishlist additions
+                cursor.execute("""
+                    WITH latest_prices AS (
+                        SELECT 
+                            pricecharting_id,
+                            condition,
+                            price,
+                            ROW_NUMBER() OVER (PARTITION BY pricecharting_id, condition ORDER BY retrieve_time DESC) as rn
+                        FROM pricecharting_prices
+                    )
+                    SELECT 
+                        p.name,
+                        p.console,
+                        w.id,  -- Using ID as proxy for addition date
+                        CAST(lp_complete.price AS DECIMAL) as price_complete,
+                        CAST(lp_loose.price AS DECIMAL) as price_loose,
+                        CAST(lp_new.price AS DECIMAL) as price_new
+                    FROM physical_games p
+                    JOIN wanted_games w ON p.id = w.physical_game
+                    LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
+                    LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+                    LEFT JOIN latest_prices lp_complete ON pc.pricecharting_id = lp_complete.pricecharting_id 
+                        AND LOWER(lp_complete.condition) = 'complete'
+                        AND lp_complete.rn = 1
+                    LEFT JOIN latest_prices lp_loose ON pc.pricecharting_id = lp_loose.pricecharting_id 
+                        AND LOWER(lp_loose.condition) = 'loose'
+                        AND lp_loose.rn = 1
+                    LEFT JOIN latest_prices lp_new ON pc.pricecharting_id = lp_new.pricecharting_id 
+                        AND LOWER(lp_new.condition) = 'new'
+                        AND lp_new.rn = 1
+                    ORDER BY w.id DESC
+                    LIMIT 10
+                """)
+                recent_wishlist = cursor.fetchall()
+
+                # Display results
+                print("\nRecently Added Games")
+                print("===================")
+                
+                if recent_collection:
+                    print("\nLatest Collection Additions:")
+                    print("--------------------------")
+                    for name, console, condition, source, purchase_price, date, current_price in recent_collection:
+                        print(f"\n{name} ({console})")
+                        print(f"  Added: {date}")
+                        print(f"  Condition: {condition}")
+                        print(f"  Source: {source}")
+                        try:
+                            if purchase_price:
+                                print(f"  Purchase price: ${float(purchase_price):.2f}")
+                            if current_price:
+                                print(f"  Current value: ${float(current_price):.2f}")
+                        except (TypeError, ValueError):
+                            pass
+                else:
+                    print("\nNo recent additions to collection.")
+
+                if recent_wishlist:
+                    print("\nLatest Wishlist Additions:")
+                    print("-------------------------")
+                    for name, console, _, price_complete, price_loose, price_new in recent_wishlist:
+                        print(f"\n{name} ({console})")
+                        try:
+                            prices = []
+                            if price_loose:
+                                prices.append(f"loose: ${float(price_loose):.2f}")
+                            if price_complete:
+                                prices.append(f"complete: ${float(price_complete):.2f}")
+                            if price_new:
+                                prices.append(f"new: ${float(price_new):.2f}")
+                            if prices:
+                                print("  Current prices:")
+                                for price in prices:
+                                    print(f"    {price}")
+                            else:
+                                print("  No current prices available")
+                        except (TypeError, ValueError):
+                            print("  No current prices available")
+                else:
+                    print("\nNo recent additions to wishlist.")
+
+        except DatabaseError as e:
+            print(f"Failed to retrieve recent additions: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description='Manage your game collection')
