@@ -528,11 +528,11 @@ def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = No
             p.id,
             p.name,
             p.console,
-            pc.pricecharting_id,
+            pc.id as pricecharting_id,
             (
                 SELECT price 
                 FROM pricecharting_prices pp 
-                WHERE pp.pricecharting_id = pc.pricecharting_id 
+                WHERE pp.pricecharting_id = pc.id 
                 AND pp.condition = 'complete'
                 ORDER BY pp.retrieve_time DESC 
                 LIMIT 1
@@ -540,7 +540,7 @@ def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = No
             (
                 SELECT price 
                 FROM pricecharting_prices pp 
-                WHERE pp.pricecharting_id = pc.pricecharting_id 
+                WHERE pp.pricecharting_id = pc.id 
                 AND pp.condition = 'loose'
                 ORDER BY pp.retrieve_time DESC 
                 LIMIT 1
@@ -548,7 +548,7 @@ def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = No
             (
                 SELECT price 
                 FROM pricecharting_prices pp 
-                WHERE pp.pricecharting_id = pc.pricecharting_id 
+                WHERE pp.pricecharting_id = pc.id 
                 AND pp.condition = 'new'
                 ORDER BY pp.retrieve_time DESC 
                 LIMIT 1
@@ -575,7 +575,7 @@ def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = No
             id=row[0],
             name=row[1],
             console=row[2],
-            pricecharting_id=row[3],
+            pricecharting_id=str(row[3]) if row[3] is not None else None,
             price_complete=row[4],
             price_loose=row[5],
             price_new=row[6]
