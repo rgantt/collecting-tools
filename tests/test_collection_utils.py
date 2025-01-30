@@ -73,9 +73,9 @@ def test_get_wishlist_items_with_prices(db_connection, sample_wishlist_game):
     
     # Add pricecharting game
     cursor.execute("""
-        INSERT INTO pricecharting_games (id, name, console)
-        VALUES (?, ?, ?)
-    """, (1, "Test Game", "Test Console"))
+        INSERT INTO pricecharting_games (id, name, console, pricecharting_id)
+        VALUES (?, ?, ?, ?)
+    """, (1, "Test Game", "Test Console", 1))
     
     # Link physical game to pricecharting game
     cursor.execute("""
@@ -104,6 +104,58 @@ def test_get_wishlist_items_with_prices(db_connection, sample_wishlist_game):
     assert item.price_loose == 49.99
     assert item.price_new == 69.99
 
+def test_get_wishlist_items_with_latest_prices(db_connection, sample_wishlist_game):
+    """Test getting wishlist items with prices from latest_prices view."""
+    cursor = db_connection.cursor()
+    
+    # Add pricecharting game
+    cursor.execute("""
+        INSERT INTO pricecharting_games (id, name, console, pricecharting_id)
+        VALUES (?, ?, ?, ?)
+    """, (1, "Test Game", "Test Console", 1))
+    
+    # Link physical game to pricecharting game
+    cursor.execute("""
+        INSERT INTO physical_games_pricecharting_games (physical_game, pricecharting_game)
+        VALUES (?, ?)
+    """, (sample_wishlist_game, 1))
+    
+    # Add multiple price records with different timestamps
+    older_time = "2025-01-28T20:00:00.000000"
+    newer_time = "2025-01-28T21:00:00.000000"
+    
+    # Add older prices
+    cursor.execute("""
+        INSERT INTO pricecharting_prices (pricecharting_id, condition, price, retrieve_time)
+        VALUES
+            (?, 'complete', 50.00, ?),
+            (?, 'loose', 40.00, ?),
+            (?, 'new', 60.00, ?)
+    """, (1, older_time, 1, older_time, 1, older_time))
+    
+    # Add newer prices (these should be the ones that show up)
+    cursor.execute("""
+        INSERT INTO pricecharting_prices (pricecharting_id, condition, price, retrieve_time)
+        VALUES
+            (?, 'complete', 55.00, ?),
+            (?, 'loose', 45.00, ?),
+            (?, 'new', 65.00, ?)
+    """, (1, newer_time, 1, newer_time, 1, newer_time))
+    
+    db_connection.commit()
+    
+    # Get wishlist items and verify we get the latest prices
+    items = get_wishlist_items(db_connection)
+    assert len(items) == 1
+    
+    item = items[0]
+    assert item.name == "Test Game"
+    assert item.console == "Test Console"
+    assert item.pricecharting_id == "1"
+    assert item.price_complete == 55.00  # Should get newer price
+    assert item.price_loose == 45.00     # Should get newer price
+    assert item.price_new == 65.00       # Should get newer price
+
 def test_update_wishlist_item(db_connection, sample_wishlist_game):
     """Test updating a wishlist item."""
     updates = {
@@ -126,9 +178,9 @@ def test_update_wishlist_item_with_pricecharting(db_connection, sample_wishlist_
     # Add pricecharting game and link it
     cursor = db_connection.cursor()
     cursor.execute("""
-        INSERT INTO pricecharting_games (id, name, console)
-        VALUES (?, ?, ?)
-    """, (1, "Test Game", "Test Console"))
+        INSERT INTO pricecharting_games (id, name, console, pricecharting_id)
+        VALUES (?, ?, ?, ?)
+    """, (1, "Test Game", "Test Console", 1))
     
     cursor.execute("""
         INSERT INTO physical_games_pricecharting_games (physical_game, pricecharting_game)

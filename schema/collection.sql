@@ -56,23 +56,30 @@ CREATE TABLE IF NOT EXISTS pricecharting_prices (
 );
 
 CREATE VIEW IF NOT EXISTS latest_prices AS
+WITH base_games AS (
+    SELECT g.id, g.name, g.console
+    FROM physical_games g
+    LEFT JOIN purchased_games pg ON g.id = pg.physical_game
+    UNION
+    SELECT g.id, g.name, g.console
+    FROM physical_games g
+    JOIN wanted_games w ON g.id = w.physical_game
+)
 SELECT
-	g.name,
-	g.console,
-	z.pricecharting_id,
-	max(p.retrieve_time) as retrieve_time,
-	p.price,
-	p.condition
-FROM physical_games g
-LEFT JOIN purchased_games pg
-	ON g.id = pg.physical_game
+    g.name,
+    g.console,
+    z.pricecharting_id,
+    max(p.retrieve_time) as retrieve_time,
+    p.price,
+    p.condition
+FROM base_games g
 JOIN physical_games_pricecharting_games j
-	ON g.id = j.physical_game
+    ON g.id = j.physical_game
 JOIN pricecharting_games z
-	ON j.pricecharting_game = z.id
+    ON j.pricecharting_game = z.id
 LEFT JOIN pricecharting_prices p
-	ON z.pricecharting_id = p.pricecharting_id
-GROUP BY g.id
+    ON z.pricecharting_id = p.pricecharting_id
+GROUP BY g.id, p.condition
 ORDER BY g.name ASC;
 
 CREATE TABLE IF NOT EXISTS purchased_games (

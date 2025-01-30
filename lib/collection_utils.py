@@ -528,35 +528,15 @@ def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = No
             p.id,
             p.name,
             p.console,
-            pc.id as pricecharting_id,
-            (
-                SELECT price 
-                FROM pricecharting_prices pp 
-                WHERE pp.pricecharting_id = pc.id 
-                AND pp.condition = 'complete'
-                ORDER BY pp.retrieve_time DESC 
-                LIMIT 1
-            ) as price_complete,
-            (
-                SELECT price 
-                FROM pricecharting_prices pp 
-                WHERE pp.pricecharting_id = pc.id 
-                AND pp.condition = 'loose'
-                ORDER BY pp.retrieve_time DESC 
-                LIMIT 1
-            ) as price_loose,
-            (
-                SELECT price 
-                FROM pricecharting_prices pp 
-                WHERE pp.pricecharting_id = pc.id 
-                AND pp.condition = 'new'
-                ORDER BY pp.retrieve_time DESC 
-                LIMIT 1
-            ) as price_new
+            pc.pricecharting_id,
+            MAX(CASE WHEN lp.condition = 'complete' THEN lp.price END) as price_complete,
+            MAX(CASE WHEN lp.condition = 'loose' THEN lp.price END) as price_loose,
+            MAX(CASE WHEN lp.condition = 'new' THEN lp.price END) as price_new
         FROM physical_games p
         JOIN wanted_games w ON p.id = w.physical_game
         LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
         LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+        LEFT JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id
         WHERE 1=1
     """
     
@@ -565,7 +545,7 @@ def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = No
         query += " AND (LOWER(p.name) LIKE LOWER(?) OR LOWER(p.console) LIKE LOWER(?))"
         params = [f'%{search_term}%', f'%{search_term}%']
     
-    query += " ORDER BY p.name ASC"
+    query += " GROUP BY p.id, p.name, p.console, pc.pricecharting_id ORDER BY p.name ASC"
     
     cursor.execute(query, params)
     rows = cursor.fetchall()
