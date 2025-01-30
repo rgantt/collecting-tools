@@ -500,3 +500,129 @@ def add_game_to_wishlist(
 
     except sqlite3.Error as e:
         return GameAdditionResult(False, f"Database error: {e}") 
+
+@dataclass
+class WishlistItem:
+    id: int
+    name: str
+    console: str
+    pricecharting_id: Optional[str]
+    price_complete: Optional[float]
+    price_loose: Optional[float]
+    price_new: Optional[float]
+
+def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = None) -> List[WishlistItem]:
+    """Get wishlist items from the database, optionally filtered by search term.
+    
+    Args:
+        conn: Database connection
+        search_term: Optional search term to filter results
+        
+    Returns:
+        List of WishlistItem objects
+    """
+    cursor = conn.cursor()
+    
+    query = """
+        SELECT 
+            p.id,
+            p.name,
+            p.console,
+            pc.pricecharting_id,
+            (
+                SELECT price 
+                FROM pricecharting_prices pp 
+                WHERE pp.pricecharting_id = pc.pricecharting_id 
+                AND pp.condition = 'complete'
+                ORDER BY pp.retrieve_time DESC 
+                LIMIT 1
+            ) as price_complete,
+            (
+                SELECT price 
+                FROM pricecharting_prices pp 
+                WHERE pp.pricecharting_id = pc.pricecharting_id 
+                AND pp.condition = 'loose'
+                ORDER BY pp.retrieve_time DESC 
+                LIMIT 1
+            ) as price_loose,
+            (
+                SELECT price 
+                FROM pricecharting_prices pp 
+                WHERE pp.pricecharting_id = pc.pricecharting_id 
+                AND pp.condition = 'new'
+                ORDER BY pp.retrieve_time DESC 
+                LIMIT 1
+            ) as price_new
+        FROM physical_games p
+        JOIN wanted_games w ON p.id = w.physical_game
+        LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
+        LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+        WHERE 1=1
+    """
+    
+    params = []
+    if search_term:
+        query += " AND (LOWER(p.name) LIKE LOWER(?) OR LOWER(p.console) LIKE LOWER(?))"
+        params = [f'%{search_term}%', f'%{search_term}%']
+    
+    query += " ORDER BY p.name ASC"
+    
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    
+    return [
+        WishlistItem(
+            id=row[0],
+            name=row[1],
+            console=row[2],
+            pricecharting_id=row[3],
+            price_complete=row[4],
+            price_loose=row[5],
+            price_new=row[6]
+        ) for row in rows
+    ]
+
+def update_wishlist_item(conn: sqlite3.Connection, game_id: int, updates: Dict[str, str]) -> None:
+    """Update a wishlist item's information.
+    
+    Args:
+        conn: Database connection
+        game_id: ID of the game to update
+        updates: Dictionary of field names and their new values
+    """
+    if not updates:
+        return
+        
+    cursor = conn.cursor()
+    
+    # Update physical_games
+    set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+    values = list(updates.values()) + [game_id]
+    cursor.execute(f"""
+        UPDATE physical_games
+        SET {set_clause}
+        WHERE id = ?
+    """, values)
+
+    # Update pricecharting_games if name/console changed
+    if 'name' in updates or 'console' in updates:
+        cursor.execute("""
+            UPDATE pricecharting_games
+            SET name = COALESCE(?, name),
+                console = COALESCE(?, console)
+            WHERE id IN (
+                SELECT pricecharting_game
+                FROM physical_games_pricecharting_games
+                WHERE physical_game = ?
+            )
+        """, (updates.get('name'), updates.get('console'), game_id))
+
+def remove_from_wishlist(conn: sqlite3.Connection, game_id: int) -> None:
+    """Remove a game from the wishlist.
+    
+    Args:
+        conn: Database connection
+        game_id: ID of the game to remove
+    """
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM wanted_games WHERE physical_game = ?", (game_id,))

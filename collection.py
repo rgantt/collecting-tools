@@ -15,7 +15,8 @@ from contextlib import contextmanager
 from lib.collection_utils import (
     GameData, SearchResult, ValueStats, GameAdditionResult, ConsoleDistribution,
     RecentAddition, search_games, get_collection_value_stats, get_console_distribution,
-    get_recent_additions, add_game_to_database, add_game_to_wishlist
+    get_recent_additions, add_game_to_database, add_game_to_wishlist, get_wishlist_items,
+    remove_from_wishlist, update_wishlist_item
 )
 
 class GameLibraryError(Exception):
@@ -350,55 +351,7 @@ class GameLibrary:
 
         try:
             with self._db_connection() as conn:
-                cursor = conn.cursor()
-                
-                query = """
-                    SELECT 
-                        p.id,
-                        p.name,
-                        p.console,
-                        pc.pricecharting_id,
-                        (
-                            SELECT price 
-                            FROM pricecharting_prices pp 
-                            WHERE pp.pricecharting_id = pc.pricecharting_id 
-                            AND pp.condition = 'complete'
-                            ORDER BY pp.retrieve_time DESC 
-                            LIMIT 1
-                        ) as price_complete,
-                        (
-                            SELECT price 
-                            FROM pricecharting_prices pp 
-                            WHERE pp.pricecharting_id = pc.pricecharting_id 
-                            AND pp.condition = 'loose'
-                            ORDER BY pp.retrieve_time DESC 
-                            LIMIT 1
-                        ) as price_loose,
-                        (
-                            SELECT price 
-                            FROM pricecharting_prices pp 
-                            WHERE pp.pricecharting_id = pc.pricecharting_id 
-                            AND pp.condition = 'new'
-                            ORDER BY pp.retrieve_time DESC 
-                            LIMIT 1
-                        ) as price_new
-                    FROM physical_games p
-                    JOIN wanted_games w ON p.id = w.physical_game
-                    LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
-                    LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
-                    WHERE 1=1
-                """
-                
-                if search_term:
-                    query += " AND (LOWER(p.name) LIKE LOWER(?) OR LOWER(p.console) LIKE LOWER(?))"
-                    params = [f'%{search_term}%', f'%{search_term}%']
-                else:
-                    params = []
-                
-                query += " ORDER BY p.name ASC"
-                
-                cursor.execute(query, params)
-                games = cursor.fetchall()
+                games = get_wishlist_items(conn, search_term)
                 
                 if not games:
                     if search_term:
@@ -408,16 +361,16 @@ class GameLibrary:
                     return
 
                 print(f"\nWishlist items{' matching ' + search_term if search_term else ''}:")
-                for i, (id, name, console, pc_id, price_complete, price_loose, price_new) in enumerate(games):
-                    print(f"\n[{i}] {name} ({console})")
+                for i, game in enumerate(games):
+                    print(f"\n[{i}] {game.name} ({game.console})")
                     try:
                         prices = []
-                        if price_loose:
-                            prices.append(f"loose: ${float(price_loose):.2f}")
-                        if price_complete:
-                            prices.append(f"complete: ${float(price_complete):.2f}")
-                        if price_new:
-                            prices.append(f"new: ${float(price_new):.2f}")
+                        if game.price_loose:
+                            prices.append(f"loose: ${float(game.price_loose):.2f}")
+                        if game.price_complete:
+                            prices.append(f"complete: ${float(game.price_complete):.2f}")
+                        if game.price_new:
+                            prices.append(f"new: ${float(game.price_new):.2f}")
                         price_str = " | ".join(prices) if prices else "no current prices"
                         print(f"    {price_str}")
                     except (TypeError, ValueError):
@@ -436,59 +389,34 @@ class GameLibrary:
                     print("Invalid selection")
                     return
                 
-                # Get the selected game's data
-                game_id = games[choice][0]
+                # Get the selected game
+                selected_game = games[choice]
                 
                 # Offer to remove from wishlist
                 remove = input('Remove from wishlist? (default: No) [y/N]: ').strip().lower()
                 if remove == 'y':
-                    cursor.execute("""
-                        DELETE FROM wanted_games
-                        WHERE physical_game = ?
-                    """, (game_id,))
+                    remove_from_wishlist(conn, selected_game.id)
                     print("Game removed from wishlist")
                     return
 
                 print("\nEnter new values (or press Enter to keep current value)")
                 
                 try:
-                    physical_updates = {}
+                    updates = {}
                     
-                    name = input(f'Name [{games[choice][1]}]: ').strip()
+                    name = input(f'Name [{selected_game.name}]: ').strip()
                     if name:
-                        physical_updates['name'] = name
+                        updates['name'] = name
                     
-                    console = input(f'Console [{games[choice][2]}]: ').strip()
+                    console = input(f'Console [{selected_game.console}]: ').strip()
                     if console:
-                        physical_updates['console'] = console
+                        updates['console'] = console
 
-                    if not physical_updates:
+                    if not updates:
                         print("No changes made")
                         return
 
-                    # Update physical_games if needed
-                    if physical_updates:
-                        set_clause = ", ".join(f"{k} = ?" for k in physical_updates.keys())
-                        values = list(physical_updates.values()) + [game_id]
-                        cursor.execute(f"""
-                            UPDATE physical_games
-                            SET {set_clause}
-                            WHERE id = ?
-                        """, values)
-
-                    # Update pricecharting_games if name/console changed
-                    if physical_updates.get('name') or physical_updates.get('console'):
-                        cursor.execute("""
-                            UPDATE pricecharting_games
-                            SET name = COALESCE(?, name),
-                                console = COALESCE(?, console)
-                            WHERE id IN (
-                                SELECT pricecharting_game
-                                FROM physical_games_pricecharting_games
-                                WHERE physical_game = ?
-                            )
-                        """, (physical_updates.get('name'), physical_updates.get('console'), game_id))
-
+                    update_wishlist_item(conn, selected_game.id, updates)
                     print("Changes saved")
 
                 except (ValueError, EOFError):
