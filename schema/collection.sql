@@ -93,4 +93,30 @@ CREATE TABLE IF NOT EXISTS wanted_games (
     FOREIGN KEY (physical_game) REFERENCES physical_games (id)
 );
 
+CREATE VIEW IF NOT EXISTS eligible_price_updates AS
+WITH latest_updates AS (
+    -- Get the most recent update time for each game, even if prices were null
+    SELECT 
+        pricecharting_id,
+        MAX(retrieve_time) as last_update
+    FROM pricecharting_prices
+    GROUP BY pricecharting_id
+)
+SELECT DISTINCT
+    g.name,
+    g.console,
+    z.pricecharting_id
+FROM physical_games g
+LEFT JOIN purchased_games pg
+    ON g.id = pg.physical_game
+JOIN physical_games_pricecharting_games j
+    ON g.id = j.physical_game
+JOIN pricecharting_games z
+    ON j.pricecharting_game = z.id
+LEFT JOIN latest_updates lu
+    ON z.pricecharting_id = lu.pricecharting_id
+WHERE lu.last_update IS NULL  -- Never attempted
+   OR datetime(lu.last_update) < datetime('now', '-7 days')  -- Or old attempt (even if it was null)
+ORDER BY g.name ASC;
+
 COMMIT;
