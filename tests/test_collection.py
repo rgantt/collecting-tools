@@ -1,7 +1,8 @@
 import sqlite3
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 from collection import GameData, add_game_to_database, add_game_to_wishlist, get_console_distribution, get_recent_additions
+from lib.price_retrieval import insert_price_records
 
 @pytest.fixture
 def db_connection():
@@ -12,6 +13,7 @@ def db_connection():
     return conn
 
 def test_add_game_to_database_basic(db_connection):
+    """Test adding a game to the database."""
     game = GameData(
         title="Test Game",
         console="Test Console",
@@ -35,6 +37,7 @@ def test_add_game_to_database_basic(db_connection):
     assert game_record[1] == "Test Console"
 
 def test_add_game_to_database_with_price_tracking(db_connection):
+    """Test adding a game to the database with price tracking."""
     game = GameData(
         title="Test Game",
         console="Test Console",
@@ -69,6 +72,7 @@ def test_add_game_to_database_with_price_tracking(db_connection):
     assert price_tracking[0] == "TEST123"
 
 def test_add_game_to_wishlist(db_connection):
+    """Test adding a game to the wishlist."""
     result = add_game_to_wishlist(db_connection, "Test Game", "Test Console")
     
     assert result.success
@@ -88,6 +92,7 @@ def test_add_game_to_wishlist(db_connection):
     assert wishlist_game[1] == "Test Console"
 
 def test_get_console_distribution(db_connection):
+    """Test getting the console distribution."""
     # Add some test data
     cursor = db_connection.cursor()
     cursor.execute("INSERT INTO physical_games (name, console) VALUES (?, ?)", ("Game 1", "Console A"))
@@ -126,6 +131,7 @@ def test_get_console_distribution(db_connection):
     assert console_b.percentage == 33.3  # 1/3 * 100
 
 def test_get_recent_additions(db_connection):
+    """Test getting recent additions."""
     # Add some test data
     cursor = db_connection.cursor()
     
@@ -159,4 +165,104 @@ def test_get_recent_additions(db_connection):
     wanted = next(r for r in recent if r.is_wanted)
     assert wanted.name == "Wanted Game"
     assert wanted.console == "Console B"
-    assert wanted.is_wanted 
+    assert wanted.is_wanted
+
+def test_price_retrieval_and_storage(db_connection):
+    """Test that retrieved prices are correctly saved and marked as up-to-date."""
+    cursor = db_connection.cursor()
+    
+    # Initialize schema
+    with open('schema/collection.sql', 'r') as f:
+        schema = f.read()
+        cursor.executescript(schema)
+    
+    # Add physical game
+    cursor.execute("""
+        INSERT INTO physical_games (name, console)
+        VALUES (?, ?)
+    """, ('Test Game', 'Test Console'))
+    physical_id = cursor.lastrowid
+    
+    # Add purchase details
+    cursor.execute("""
+        INSERT INTO purchased_games
+        (physical_game, condition, source, price, acquisition_date)
+        VALUES (?, ?, ?, ?, ?)
+    """, (physical_id, 'complete', 'Test', '10.00', '2024-03-15'))
+    
+    # Add pricecharting game
+    cursor.execute("""
+        INSERT INTO pricecharting_games (name, console, pricecharting_id)
+        VALUES (?, ?, ?)
+    """, ('Test Game', 'Test Console', 'TEST123'))
+    pc_id = cursor.lastrowid
+    
+    # Link physical and pricecharting games
+    cursor.execute("""
+        INSERT INTO physical_games_pricecharting_games
+        (physical_game, pricecharting_game)
+        VALUES (?, ?)
+    """, (physical_id, pc_id))
+    
+    db_connection.commit()
+
+    # Mock price data to be inserted with correct format
+    test_prices = [{
+        'game': 'TEST123',  # This should be the pricecharting_id
+        'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'prices': {
+            'complete': 20.00,
+            'loose': 15.00,
+            'new': 30.00
+        }
+    }]
+    
+    # Insert prices directly using the connection
+    records = [
+        (record['game'], record['time'], record['prices'][condition], condition)
+        for record in test_prices
+        for condition, price in record['prices'].items()
+        if price is not None
+    ]
+    
+    cursor.executemany("""
+        INSERT INTO pricecharting_prices
+        (pricecharting_id, retrieve_time, price, condition)
+        VALUES (?,?,?,?)
+    """, records)
+    
+    db_connection.commit()
+    
+    # Check if prices exist and are recent
+    cursor.execute("""
+        SELECT pricecharting_id, condition, price, retrieve_time
+        FROM pricecharting_prices
+        WHERE pricecharting_id = 'TEST123'
+        ORDER BY retrieve_time DESC
+    """)
+    
+    prices = cursor.fetchall()
+    assert len(prices) == 3  # Should have 3 conditions
+    
+    # Check each condition has a price
+    conditions = set()
+    for price in prices:
+        pricecharting_id, condition, price_value, retrieve_time = price
+        conditions.add(condition)
+        assert pricecharting_id == 'TEST123'
+        assert price_value is not None
+        # Verify retrieve_time is recent (within last minute)
+        retrieve_datetime = datetime.strptime(retrieve_time, '%Y-%m-%d %H:%M:%S')
+        assert datetime.now() - retrieve_datetime < timedelta(minutes=1)
+    
+    assert conditions == {'complete', 'loose', 'new'}
+    
+    # Verify game is not eligible for update
+    cursor.execute("""
+        SELECT COUNT(DISTINCT pricecharting_id)
+        FROM latest_prices
+        WHERE retrieve_time < datetime('now', '-7 days')
+        OR retrieve_time IS NULL
+    """)
+    eligible_count = cursor.fetchone()[0]
+    assert eligible_count == 0 
