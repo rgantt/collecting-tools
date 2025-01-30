@@ -67,10 +67,9 @@ Game completely deleted from collection
 #### prices - Update market prices for your games
 ```bash
 What would you like to do? (Ctrl + D to exit) prices
-Maximum prices to retrieve (optional): 10
-Retrieving prices for 10 games...
+Retrieving prices for all games...
 Progress: [=========================-----------------] 60.0% (6/10) - Pokemon Scarlet
-Updated prices for 10 games
+Updated prices for all games
 ```
 
 #### wishlist - View your wishlist
@@ -181,7 +180,6 @@ Available commands:
 add      - Add a game to your library
 search   - Search library
 prices   - Retrieve latest prices
-ids      - Retrieve missing game IDs
 want     - Add a game to the wishlist
 wishlist - View your wishlist
 value    - Display collection value statistics
