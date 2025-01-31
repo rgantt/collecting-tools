@@ -177,7 +177,7 @@ class GameLibrary:
             print("\nInvalid input")
             return
 
-        games = retrieve_games_for_prices(self.db_path, max_prices)
+        games = retrieve_games_for_prices(str(self.db_path), max_prices)
         if not games:
             print("No games found needing price updates.")
             return

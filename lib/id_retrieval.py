@@ -69,13 +69,9 @@ def retrieve_games(db_path: str) -> List[Tuple[int, str, str]]:
     ORDER BY name ASC
     """
     
-    try:
-        with sqlite3.connect(db_path) as con:
-            cursor = con.execute(statement)
-            return cursor.fetchall()
-    except sqlite3.Error as e:
-        print(f"Database error: {e}")
-        return []
+    with sqlite3.connect(db_path) as con:
+        cursor = con.execute(statement)
+        return cursor.fetchall()
 
 def insert_game_ids(games: List[Dict[str, Any]], db_path: str) -> int:
     statement = """

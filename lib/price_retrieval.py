@@ -45,7 +45,9 @@ def retrieve_games(db_path: str, max_prices: Optional[int] = None) -> List[str]:
     
     try:
         with sqlite3.connect(db_path) as con:
-            if max_prices:
+            if max_prices == 0:
+                return []
+            elif max_prices:
                 cursor = con.execute(base_query + " LIMIT ?", (max_prices,))
             else:
                 cursor = con.execute(base_query)
