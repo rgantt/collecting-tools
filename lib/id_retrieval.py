@@ -2,7 +2,7 @@ import sqlite3
 import requests
 from bs4 import BeautifulSoup
 import re
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 
 upc_regex = re.compile("^[0-9]{12}$")
 asin_regex = re.compile("^B0[A-Z0-9]{8}$")
@@ -61,7 +61,7 @@ def get_game_id(internal_id: int, game_name: str, system_name: str) -> Dict[str,
         'url': url
     }
 
-def retrieve_games(db_path: str) -> List[Tuple[int, str, str]]:
+def retrieve_games(connection: Union[str, sqlite3.Connection]) -> List[Tuple[int, str, str]]:
     statement = """
     SELECT id, name, console
     FROM pricecharting_games
@@ -69,11 +69,15 @@ def retrieve_games(db_path: str) -> List[Tuple[int, str, str]]:
     ORDER BY name ASC
     """
     
-    with sqlite3.connect(db_path) as con:
-        cursor = con.execute(statement)
+    if isinstance(connection, str):
+        with sqlite3.connect(connection) as conn:
+            cursor = conn.execute(statement)
+            return cursor.fetchall()
+    else:
+        cursor = connection.execute(statement)
         return cursor.fetchall()
 
-def insert_game_ids(games: List[Dict[str, Any]], db_path: str) -> int:
+def insert_game_ids(games: List[Dict[str, Any]], connection: Union[str, sqlite3.Connection]) -> int:
     statement = """
     REPLACE INTO pricecharting_games 
     (pricecharting_id, url, id, name, console) 
@@ -85,6 +89,11 @@ def insert_game_ids(games: List[Dict[str, Any]], db_path: str) -> int:
          record['name'], record['console']) for record in games
     ]
 
-    with sqlite3.connect(db_path) as con:
-        con.executemany(statement, updates)
-    return len(games) 
+    if isinstance(connection, str):
+        with sqlite3.connect(connection) as conn:
+            conn.executemany(statement, updates)
+            conn.commit()
+    else:
+        connection.executemany(statement, updates)
+        
+    return len(games)

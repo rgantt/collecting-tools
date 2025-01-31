@@ -2,7 +2,7 @@ import sqlite3
 import requests
 from bs4 import BeautifulSoup
 import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 
 def extract_price(document: BeautifulSoup, selector: str) -> Optional[float]:
     if price_element := document.select_one(selector):
@@ -36,32 +36,39 @@ def get_game_prices(game_id: str) -> Dict[str, Any]:
         print(f"\nError retrieving prices for game {game_id}: {e}")
         return None
 
-def retrieve_games(db_path: str, max_prices: Optional[int] = None) -> List[str]:
+def retrieve_games(db_path: Union[str, sqlite3.Connection], max_prices: Optional[int] = None) -> List[str]:
     base_query = """
         SELECT DISTINCT pricecharting_id
         FROM eligible_price_updates
         ORDER BY name ASC
     """
-    
+
     try:
-        with sqlite3.connect(db_path) as con:
-            if max_prices == 0:
-                return []
-            elif max_prices:
-                cursor = con.execute(base_query + " LIMIT ?", (max_prices,))
-            else:
-                cursor = con.execute(base_query)
-            return [row[0] for row in cursor]
+        if isinstance(db_path, str):
+            con = sqlite3.connect(db_path)
+        else:
+            con = db_path
+
+        if max_prices == 0:
+            return []
+        elif max_prices:
+            cursor = con.execute(base_query + " LIMIT ?", (max_prices,))
+        else:
+            cursor = con.execute(base_query)
+        return [str(row[0]) for row in cursor]  # Convert IDs to strings
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return []
+    finally:
+        if isinstance(db_path, str) and 'con' in locals():
+            con.close()
 
-def insert_price_records(games: List[Dict[str, Any]], db_path: str) -> None:
+def insert_price_records(games: List[Dict[str, Any]], connection: Union[str, sqlite3.Connection]) -> None:
     records = []
     for record in games:
         if record is None:
             continue
-            
+
         has_prices = False
         for condition, price in record['prices'].items():
             records.append((record['game'], record['time'], price, condition))
@@ -72,9 +79,18 @@ def insert_price_records(games: List[Dict[str, Any]], db_path: str) -> None:
         if not has_prices:
             records.append((record['game'], record['time'], None, 'new'))
     
-    with sqlite3.connect(db_path) as con:
-        con.execute("PRAGMA foreign_keys = ON")
-        con.executemany("""
+    if isinstance(connection, str):
+        with sqlite3.connect(connection) as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.executemany("""
+                INSERT INTO pricecharting_prices 
+                (pricecharting_id, retrieve_time, price, condition)
+                VALUES (?,?,?,?)
+            """, records)
+            conn.commit()
+    else:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.executemany("""
             INSERT INTO pricecharting_prices 
             (pricecharting_id, retrieve_time, price, condition)
             VALUES (?,?,?,?)

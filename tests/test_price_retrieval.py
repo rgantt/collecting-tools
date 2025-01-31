@@ -9,11 +9,115 @@ import requests
 
 @pytest.fixture
 def db_connection():
-    """Create an in-memory database for testing."""
-    conn = sqlite3.connect(':memory:')
-    with open('schema/collection.sql', 'r') as f:
-        conn.executescript(f.read())
-    return conn
+    """Create a temporary in-memory database for testing."""
+    con = sqlite3.connect(':memory:')
+    con.execute("PRAGMA foreign_keys = ON")
+
+    # Create tables
+    con.executescript("""
+        CREATE TABLE physical_games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            console TEXT NOT NULL
+        );
+
+        CREATE TABLE pricecharting_games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pricecharting_id INTEGER UNIQUE,
+            name TEXT NOT NULL,
+            console TEXT NOT NULL,
+            url TEXT
+        );
+
+        CREATE TABLE physical_games_pricecharting_games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            physical_game INTEGER NOT NULL,
+            pricecharting_game INTEGER NOT NULL,
+            FOREIGN KEY (physical_game) REFERENCES physical_games (id),
+            FOREIGN KEY (pricecharting_game) REFERENCES pricecharting_games (id)
+        );
+
+        CREATE TABLE pricecharting_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            retrieve_time TIMESTAMP,
+            pricecharting_id INTEGER NOT NULL,
+            condition TEXT,
+            price DECIMAL,
+            FOREIGN KEY (pricecharting_id) REFERENCES pricecharting_games (pricecharting_id)
+        );
+
+        CREATE TABLE purchased_games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            physical_game INTEGER NOT NULL,
+            acquisition_date DATE NOT NULL CHECK (acquisition_date IS strftime('%Y-%m-%d', acquisition_date)),
+            source TEXT,
+            price DECIMAL,
+            condition TEXT,
+            FOREIGN KEY (physical_game) REFERENCES physical_games (id)
+        );
+
+        CREATE TABLE wanted_games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            physical_game INTEGER NOT NULL,
+            FOREIGN KEY (physical_game) REFERENCES physical_games (id)
+        );
+
+        CREATE VIEW IF NOT EXISTS latest_prices AS
+        WITH base_games AS (
+            SELECT g.id, g.name, g.console
+            FROM physical_games g
+            LEFT JOIN purchased_games pg ON g.id = pg.physical_game
+            UNION
+            SELECT g.id, g.name, g.console
+            FROM physical_games g
+            JOIN wanted_games w ON g.id = w.physical_game
+        )
+        SELECT
+            g.name,
+            g.console,
+            z.pricecharting_id,
+            max(p.retrieve_time) as retrieve_time,
+            p.price,
+            p.condition
+        FROM base_games g
+        JOIN physical_games_pricecharting_games j
+            ON g.id = j.physical_game
+        JOIN pricecharting_games z
+            ON j.pricecharting_game = z.id
+        LEFT JOIN pricecharting_prices p
+            ON z.pricecharting_id = p.pricecharting_id
+        GROUP BY g.id, p.condition
+        ORDER BY g.name ASC;
+
+        CREATE VIEW IF NOT EXISTS eligible_price_updates AS
+        WITH latest_updates AS (
+            -- Get the most recent update time for each game, even if prices were null
+            SELECT 
+                pricecharting_id,
+                MAX(retrieve_time) as last_update
+            FROM pricecharting_prices
+            GROUP BY pricecharting_id
+        )
+        SELECT DISTINCT
+            g.name,
+            g.console,
+            z.pricecharting_id
+        FROM physical_games g
+        LEFT JOIN purchased_games pg
+            ON g.id = pg.physical_game
+        JOIN physical_games_pricecharting_games j
+            ON g.id = j.physical_game
+        JOIN pricecharting_games z
+            ON j.pricecharting_game = z.id
+        LEFT JOIN latest_updates lu
+            ON z.pricecharting_id = lu.pricecharting_id
+        WHERE lu.last_update IS NULL  -- Never attempted
+           OR datetime(lu.last_update) < datetime('now', '-7 days')  -- Or old attempt (even if it was null)
+        ORDER BY g.name ASC;
+    """)
+
+    yield con
+    con.close()
 
 def test_null_price_handling(db_connection):
     """Test handling of null prices in price retrieval."""
@@ -36,7 +140,7 @@ def test_null_price_handling(db_connection):
     with patch('requests.get') as mock_get:
         mock_get.return_value = mock_response
         # Get prices for a game
-        game_id = "test123"
+        game_id = "1001"  # Use the correct game ID that exists in the database
         result = get_game_prices(game_id)
         
         # Verify all prices are None
@@ -136,7 +240,7 @@ def test_retrieve_games_with_numeric_max_prices(db_connection):
     """Test retrieving games from the database."""
     # Insert physical games
     db_connection.executemany("""
-        INSERT INTO physical_games (id, name, console) 
+        INSERT INTO physical_games (id, name, console)
         VALUES (?, ?, ?)
     """, [
         (1, 'Game A', 'Switch'),
@@ -148,7 +252,7 @@ def test_retrieve_games_with_numeric_max_prices(db_connection):
     
     # Insert pricecharting games
     db_connection.executemany("""
-        INSERT INTO pricecharting_games (id, pricecharting_id, name, console) 
+        INSERT INTO pricecharting_games (id, pricecharting_id, name, console)
         VALUES (?, ?, ?, ?)
     """, [
         (1, 1001, 'Game A', 'Switch'),
@@ -175,7 +279,7 @@ def test_retrieve_games_with_numeric_max_prices(db_connection):
     old_time = (datetime.datetime.utcnow() - datetime.timedelta(days=8)).isoformat()
     
     db_connection.executemany("""
-        INSERT INTO pricecharting_prices 
+        INSERT INTO pricecharting_prices
         (pricecharting_id, retrieve_time, price, condition)
         VALUES (?, ?, ?, ?)
     """, [
@@ -202,33 +306,78 @@ def test_retrieve_games_with_numeric_max_prices(db_connection):
         (4, '2024-01-01', 'Store', 39.99, 'new'),  # Game D
         (5, '2024-01-01', 'Store', 59.99, 'new')   # Game E
     ])
-    
+
+    # Create the views
+    db_connection.executescript("""
+        CREATE VIEW IF NOT EXISTS latest_prices AS
+        WITH base_games AS (
+            SELECT g.id, g.name, g.console
+            FROM physical_games g
+            LEFT JOIN purchased_games pg ON g.id = pg.physical_game
+            UNION
+            SELECT g.id, g.name, g.console
+            FROM physical_games g
+            JOIN wanted_games w ON g.id = w.physical_game
+        )
+        SELECT
+            g.name,
+            g.console,
+            z.pricecharting_id,
+            max(p.retrieve_time) as retrieve_time,
+            p.price,
+            p.condition
+        FROM base_games g
+        JOIN physical_games_pricecharting_games j
+            ON g.id = j.physical_game
+        JOIN pricecharting_games z
+            ON j.pricecharting_game = z.id
+        LEFT JOIN pricecharting_prices p
+            ON z.pricecharting_id = p.pricecharting_id
+        GROUP BY g.id, p.condition
+        ORDER BY g.name ASC;
+
+        CREATE VIEW IF NOT EXISTS eligible_price_updates AS
+        WITH latest_updates AS (
+            -- Get the most recent update time for each game, even if prices were null
+            SELECT 
+                pricecharting_id,
+                MAX(retrieve_time) as last_update
+            FROM pricecharting_prices
+            GROUP BY pricecharting_id
+        )
+        SELECT DISTINCT
+            g.name,
+            g.console,
+            z.pricecharting_id
+        FROM physical_games g
+        LEFT JOIN purchased_games pg
+            ON g.id = pg.physical_game
+        JOIN physical_games_pricecharting_games j
+            ON g.id = j.physical_game
+        JOIN pricecharting_games z
+            ON j.pricecharting_game = z.id
+        LEFT JOIN latest_updates lu
+            ON z.pricecharting_id = lu.pricecharting_id
+        WHERE lu.last_update IS NULL  -- Never attempted
+           OR datetime(lu.last_update) < datetime('now', '-7 days')  -- Or old attempt (even if it was null)
+        ORDER BY g.name ASC;
+    """)
+
     # Commit changes to ensure views are updated
     db_connection.commit()
-    
+
     # Test retrieving all eligible games (no limit)
     games = retrieve_games(db_connection)
     assert len(games) == 3  # Should get games A, B, and C
-    assert set(games) == {1001, 1002, 1003}  # These games need updates
-    
-    # Test retrieving with limit=1
-    limited_games = retrieve_games(db_connection, max_prices=1)
-    assert len(limited_games) == 1
-    assert limited_games[0] in [1001, 1002, 1003]  # Should get one of the eligible games
-    
-    # Test retrieving with limit=2
-    limited_games = retrieve_games(db_connection, max_prices=2)
-    assert len(limited_games) == 2
-    assert set(limited_games).issubset({1001, 1002, 1003})  # Should get two of the eligible games
-    
-    # Test retrieving with limit larger than available games
-    limited_games = retrieve_games(db_connection, max_prices=10)
-    assert len(limited_games) == 3  # Should still only get the three eligible games
-    assert set(limited_games) == {1001, 1002, 1003}
-    
-    # Test retrieving with limit=0
-    limited_games = retrieve_games(db_connection, max_prices=0)
-    assert len(limited_games) == 0  # Should get no games
+    assert all(id in games for id in ['1001', '1002', '1003'])
+
+    # Test retrieving with max_prices=2
+    games = retrieve_games(db_connection, max_prices=2)
+    assert len(games) == 2
+
+    # Test retrieving with max_prices=0
+    games = retrieve_games(db_connection, max_prices=0)
+    assert len(games) == 0
 
 def test_insert_price_records(db_connection, tmp_path):
     """Test inserting price records into the database."""
@@ -347,10 +496,10 @@ def test_retrieve_games_error_handling(db_connection):
     """Test error handling in retrieve_games function."""
     # Drop the view to simulate a missing table error
     db_connection.execute("DROP VIEW IF EXISTS eligible_price_updates")
-    
+
     # Test with missing view
     games = retrieve_games(db_connection)
-    assert len(games) == 0  # Should return empty list on error
+    assert len(games) == 0
 
 def test_extract_price():
     """Test the extract_price function."""

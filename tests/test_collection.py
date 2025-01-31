@@ -1,7 +1,21 @@
+import json
+import os
 import sqlite3
+from pathlib import Path
 import pytest
 from datetime import datetime, timedelta
-from collection import GameData, add_game_to_database, add_game_to_wishlist, get_console_distribution, get_recent_additions, GameLibrary
+from collection import GameData, GameLibrary
+
+from lib.collection_utils import (
+    add_game_to_database,
+    add_game_to_wishlist,
+    get_collection_value_stats,
+    get_console_distribution,
+    get_recent_additions,
+    get_wishlist_items,
+    remove_from_wishlist,
+    search_games
+)
 from lib.price_retrieval import insert_price_records
 
 @pytest.fixture
@@ -11,6 +25,14 @@ def db_connection():
     with open('schema/collection.sql', 'r') as f:
         conn.executescript(f.read())
     return conn
+
+@pytest.fixture
+def initialized_library(tmp_path, monkeypatch):
+    """Create a GameLibrary instance with an initialized database."""
+    db_path = tmp_path / "test.db"
+    monkeypatch.setattr('builtins.input', lambda _: 'y')  # Auto-confirm initialization
+    library = GameLibrary(str(db_path))
+    return library
 
 def test_add_game_to_database_basic(db_connection):
     """Test adding a game to the database."""
@@ -317,3 +339,276 @@ def test_game_library_add_game(tmp_path, monkeypatch):
         assert game[3] == "Amazon"
         assert float(game[4]) == 59.99  # Compare as float
         assert game[5] == "2025-01-30"
+
+def test_search_games(initialized_library, monkeypatch):
+    """Test searching games in the collection."""
+    # Mock get_game_id to avoid HTTP requests
+    def mock_get_game_id(internal_id, game_name, system_name):
+        raise ValueError("Mocked error")
+    monkeypatch.setattr('lib.id_retrieval.get_game_id', mock_get_game_id)
+
+    # Add test games
+    game1_data = {
+        'title': 'Super Mario 64',
+        'console': 'N64',
+        'condition': 'loose',
+        'source': 'eBay',
+        'price': '45.99',
+        'date': '2024-03-15'
+    }
+    game2_data = {
+        'title': 'Mario Kart 8 Deluxe',
+        'console': 'Switch',
+        'condition': 'complete',
+        'source': 'GameStop',
+        'price': '39.99',
+        'date': '2024-02-01'
+    }
+    wishlist_data = {
+        'title': 'Super Mario RPG',
+        'console': 'Switch'
+    }
+
+    def mock_input(prompt: str) -> str:
+        if 'Would you like to (e)dit the game info, or (c)ontinue without price tracking?' in prompt:
+            return 'c'
+        elif 'Title' in prompt:
+            if '[' not in prompt:  # First input for each game
+                if not hasattr(mock_input, 'current_game'):
+                    mock_input.current_game = 'game1'
+                    return game1_data['title']
+                elif mock_input.current_game == 'game1':
+                    mock_input.current_game = 'game2'
+                    return game2_data['title']
+                elif mock_input.current_game == 'game2':
+                    mock_input.current_game = 'wishlist'
+                    return wishlist_data['title']
+                else:
+                    return 'mario'  # For search
+        elif 'Console' in prompt:
+            if mock_input.current_game == 'game1':
+                return game1_data['console']
+            elif mock_input.current_game == 'game2':
+                return game2_data['console']
+            elif mock_input.current_game == 'wishlist':
+                return wishlist_data['console']
+        elif 'Condition' in prompt:
+            if mock_input.current_game == 'game1':
+                return game1_data['condition']
+            elif mock_input.current_game == 'game2':
+                return game2_data['condition']
+        elif 'Source' in prompt:
+            if mock_input.current_game == 'game1':
+                return game1_data['source']
+            elif mock_input.current_game == 'game2':
+                return game2_data['source']
+        elif 'Price' in prompt:
+            if mock_input.current_game == 'game1':
+                return game1_data['price']
+            elif mock_input.current_game == 'game2':
+                return game2_data['price']
+        elif 'Date' in prompt:
+            if mock_input.current_game == 'game1':
+                return game1_data['date']
+            elif mock_input.current_game == 'game2':
+                return game2_data['date']
+        elif 'Enter search term' in prompt:
+            return 'mario'
+        return ''
+
+    monkeypatch.setattr('builtins.input', mock_input)
+
+    # Add games and wishlist item
+    initialized_library.add_game()
+    initialized_library.add_game()
+    initialized_library.want_game()
+
+    # Test search functionality
+    with initialized_library._db_connection() as conn:
+        results = search_games(conn, 'mario')
+        assert len(results) == 3
+        assert any(g.name == "Super Mario 64" and g.console == "N64" for g in results)
+        assert any(g.name == "Mario Kart 8 Deluxe" and g.console == "Switch" for g in results)
+        assert any(g.name == "Super Mario RPG" and g.console == "Switch" and g.is_wanted for g in results)
+
+def test_wishlist_view_and_edit(initialized_library, monkeypatch):
+    """Test viewing and editing the wishlist."""
+    # Mock get_game_id to avoid HTTP requests
+    def mock_get_game_id(internal_id, game_name, system_name):
+        raise ValueError("Mocked error")
+    monkeypatch.setattr('lib.id_retrieval.get_game_id', mock_get_game_id)
+
+    # Add test wishlist items
+    wishlist1_data = {
+        'title': 'Super Mario RPG',
+        'console': 'Switch'
+    }
+    wishlist2_data = {
+        'title': 'Mario Kart 9',
+        'console': 'Switch'
+    }
+
+    def mock_input(prompt: str) -> str:
+        if 'Would you like to (e)dit the game info, or (c)ontinue without price tracking?' in prompt:
+            return 'c'
+        elif 'Title' in prompt:
+            if '[' not in prompt:  # First input for each game
+                if not hasattr(mock_input, 'current_game'):
+                    mock_input.current_game = 'wishlist1'
+                    return wishlist1_data['title']
+                elif mock_input.current_game == 'wishlist1':
+                    mock_input.current_game = 'wishlist2'
+                    return wishlist2_data['title']
+                else:
+                    mock_input.current_game = 'search'
+                    return 'mario'
+        elif 'Console' in prompt:
+            if mock_input.current_game == 'wishlist1':
+                return wishlist1_data['console']
+            elif mock_input.current_game == 'wishlist2':
+                return wishlist2_data['console']
+        elif 'Enter search term' in prompt:
+            return 'mario'
+        elif 'Select a game to edit' in prompt:
+            return '1'
+        elif 'Remove from wishlist?' in prompt:
+            return 'y'
+        return ''
+
+    monkeypatch.setattr('builtins.input', mock_input)
+    
+    # Add wishlist items
+    initialized_library.want_game()
+    initialized_library.want_game()
+    
+    # Test viewing and editing wishlist
+    initialized_library.view_wishlist()
+    
+    # Verify game was removed
+    with initialized_library._db_connection() as conn:
+        remaining_items = get_wishlist_items(conn)
+        assert len(remaining_items) == 1
+        assert all(item.name != "Super Mario RPG" for item in remaining_items)
+
+def test_value_statistics(db_connection):
+    """Test collection value statistics."""
+    # Add test games with known values
+    games = [
+        GameData(
+            title="Earthbound",
+            console="SNES",
+            condition="complete",
+            source="eBay",
+            price="299.99",
+            date="2024-01-01"
+        ),
+        GameData(
+            title="Chrono Trigger",
+            console="SNES",
+            condition="complete",
+            source="Local Store",
+            price="275.00",
+            date="2024-01-15"
+        )
+    ]
+    
+    for game in games:
+        result = add_game_to_database(db_connection, game)
+        
+        # Add price tracking data
+        cursor = db_connection.cursor()
+        cursor.execute("""
+            INSERT INTO pricecharting_games (pricecharting_id, name, console)
+            VALUES (?, ?, ?)
+        """, (f"test-{game.title.lower()}", game.title, game.console))
+        pc_id = cursor.lastrowid
+        
+        # Link the game to price tracking
+        cursor.execute("""
+            INSERT INTO physical_games_pricecharting_games (physical_game, pricecharting_game)
+            VALUES (?, ?)
+        """, (result.game_id, pc_id))
+        
+        # Add current prices
+        cursor.execute("""
+            INSERT INTO pricecharting_prices (pricecharting_id, condition, price, retrieve_time)
+            VALUES (?, ?, ?, ?)
+        """, (f"test-{game.title.lower()}", game.condition.lower(), 
+              "399.99" if game.title == "Earthbound" else "349.99", 
+              "2024-03-15"))
+
+    stats = get_collection_value_stats(db_connection)
+    
+    assert stats.total_purchase == 574.99  # 299.99 + 275.00
+    assert stats.total_market == 749.98    # 399.99 + 349.99
+    assert len(stats.top_valuable) == 2
+    assert stats.top_valuable[0][0] == "Earthbound"  # Most valuable game
+    assert float(stats.top_valuable[0][4]) == 399.99  # Current price
+
+def test_help_command(initialized_library, capsys):
+    """Test the help command output."""
+    initialized_library.display_commands()
+    captured = capsys.readouterr()
+    
+    # Verify all commands are listed
+    assert "add" in captured.out
+    assert "search" in captured.out
+    assert "prices" in captured.out
+    assert "want" in captured.out
+    assert "wishlist" in captured.out
+    assert "value" in captured.out
+    assert "distribution" in captured.out
+    assert "recent" in captured.out
+    assert "help" in captured.out
+
+def test_recent_additions_with_prices(db_connection):
+    """Test displaying recent additions with price information."""
+    # Add a recent game
+    game = GameData(
+        title="Final Fantasy XVI",
+        console="PS5",
+        condition="new",
+        source="Amazon",
+        price="69.99",
+        date=(datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    )
+    result = add_game_to_database(db_connection, game)
+    
+    # Add price tracking data
+    cursor = db_connection.cursor()
+    cursor.execute("""
+        INSERT INTO pricecharting_games (pricecharting_id, name, console)
+        VALUES ('test-ff16', 'Final Fantasy XVI', 'PS5')
+    """)
+    pc_id = cursor.lastrowid
+    
+    cursor.execute("""
+        INSERT INTO physical_games_pricecharting_games (physical_game, pricecharting_game)
+        VALUES (?, ?)
+    """, (result.game_id, pc_id))
+    
+    cursor.execute("""
+        INSERT INTO pricecharting_prices (pricecharting_id, condition, price, retrieve_time)
+        VALUES ('test-ff16', 'new', '54.99', '2024-03-15')
+    """)
+    
+    # Add a recent wishlist item
+    wishlist_result = add_game_to_wishlist(db_connection, "Persona 3 Reload", "PS5")
+    
+    # Test recent additions
+    recent = get_recent_additions(db_connection)
+    
+    # Check collection additions
+    collection_items = [item for item in recent if not item.is_wanted]
+    assert len(collection_items) >= 1
+    ff16 = next(item for item in collection_items if item.name == "Final Fantasy XVI")
+    assert ff16.console == "PS5"
+    assert ff16.condition == "new"
+    assert ff16.source == "Amazon"
+    assert float(ff16.price) == 69.99
+    assert ff16.current_prices.get('new') == 54.99
+    
+    # Check wishlist additions
+    wishlist_items = [item for item in recent if item.is_wanted]
+    assert len(wishlist_items) >= 1
+    assert any(item.name == "Persona 3 Reload" and item.console == "PS5" for item in wishlist_items)

@@ -171,60 +171,60 @@ class GameLibrary:
                 
                 print(f"\nFound {total_eligible} games eligible for price updates\n")
             
-            max_prices = input('Maximum prices to retrieve (optional): ')
-            max_prices = int(max_prices) if max_prices else None
+                max_prices = input('Maximum prices to retrieve (optional): ')
+                max_prices = int(max_prices) if max_prices else None
+                
+                games = retrieve_games_for_prices(conn, max_prices)
+                if not games:
+                    print("No games found needing price updates.")
+                    return
+
+                print(f"Retrieving prices for {len(games)} games...")
+                all_failed = []
+                processed = 0
+
+                bar_length = 50
+                bar = '-' * bar_length
+                
+                # Print progress on same line
+                print(f"\rProgress: [{bar}] 0% (0/{len(games)})", end='', flush=True)
+
+                for i in range(0, len(games)):
+                    successful = []
+                    failed = []
+                    try:
+                        successful.append(get_game_prices(games[i]))
+                    except ValueError as err:
+                        failed.append({'game': games[i], 'message': str(err)})
+                    
+                    if successful:
+                        try:
+                            insert_price_records(successful, conn)
+                            processed += len(successful)
+                            
+                            # Calculate percentage and create progress bar
+                            percent = (processed / len(games)) * 100
+                            filled = int(bar_length * processed // len(games))
+                            bar = '=' * filled + '-' * (bar_length - filled)
+                            
+                            # Print progress on same line
+                            print(f"\rProgress: [{bar}] {percent:.1f}% ({processed}/{len(games)})", end='', flush=True)
+                            
+                        except sqlite3.Error as e:
+                            print(f"\nFailed to save batch to database: {e}")
+                    
+                    all_failed.extend(failed)
+                
+                # Print newline after progress bar is complete
+                print()
+                print(f"Completed: {processed}/{len(games)} prices retrieved")
+                
+                if all_failed:
+                    print(f"\nFailures ({len(all_failed)}):")
+                    print(json.dumps(all_failed, indent=2))
         except (ValueError, EOFError):
             print("\nInvalid input")
             return
-
-        games = retrieve_games_for_prices(str(self.db_path), max_prices)
-        if not games:
-            print("No games found needing price updates.")
-            return
-
-        print(f"Retrieving prices for {len(games)} games...")
-        all_failed = []
-        processed = 0
-
-        bar_length = 50
-        bar = '-' * bar_length
-        
-        # Print progress on same line
-        print(f"\rProgress: [{bar}] 0% (0/{len(games)})", end='', flush=True)
-
-        for i in range(0, len(games)):
-            successful = []
-            failed = []
-            try:
-                successful.append(get_game_prices(games[i]))
-            except ValueError as err:
-                failed.append({'game': games[i], 'message': str(err)})
-            
-            if successful:
-                try:
-                    insert_price_records(successful, self.db_path)
-                    processed += len(successful)
-                    
-                    # Calculate percentage and create progress bar
-                    percent = (processed / len(games)) * 100
-                    filled = int(bar_length * processed // len(games))
-                    bar = '=' * filled + '-' * (bar_length - filled)
-                    
-                    # Print progress on same line
-                    print(f"\rProgress: [{bar}] {percent:.1f}% ({processed}/{len(games)})", end='', flush=True)
-                    
-                except sqlite3.Error as e:
-                    print(f"\nFailed to save batch to database: {e}")
-            
-            all_failed.extend(failed)
-        
-        # Print newline after progress bar is complete
-        print()
-        print(f"Completed: {processed}/{len(games)} prices retrieved")
-        
-        if all_failed:
-            print(f"\nFailures ({len(all_failed)}):")
-            print(json.dumps(all_failed, indent=2))
 
     def init_db(self):
         """Initialize a new database with the schema."""
