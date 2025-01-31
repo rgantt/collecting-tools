@@ -1,7 +1,7 @@
 import sqlite3
 import pytest
 from datetime import datetime, timedelta
-from collection import GameData, add_game_to_database, add_game_to_wishlist, get_console_distribution, get_recent_additions
+from collection import GameData, add_game_to_database, add_game_to_wishlist, get_console_distribution, get_recent_additions, GameLibrary
 from lib.price_retrieval import insert_price_records
 
 @pytest.fixture
@@ -266,3 +266,54 @@ def test_price_retrieval_and_storage(db_connection):
     """)
     eligible_count = cursor.fetchone()[0]
     assert eligible_count == 0 
+
+def test_game_library_add_game(tmp_path, monkeypatch):
+    """Test the interactive add_game method of GameLibrary."""
+    # Create a temporary database file
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    with open('schema/collection.sql', 'r') as f:
+        conn.executescript(f.read())
+    conn.close()
+    
+    # Mock user input for game details and choice
+    inputs = iter([
+        "Test Game",  # title
+        "Switch",     # console
+        "new",       # condition
+        "Amazon",    # source
+        "59.99",     # price
+        "2025-01-30", # date
+        "c"          # choice to continue without price tracking
+    ])
+    monkeypatch.setattr('builtins.input', lambda _: next(inputs))
+    
+    # Mock get_game_id to simulate price tracking ID retrieval failure
+    def mock_get_game_id(*args):
+        raise ValueError("Price tracking unavailable")
+    monkeypatch.setattr('collection.get_game_id', mock_get_game_id)
+    
+    # Create GameLibrary instance with test database
+    library = GameLibrary(db_path)
+    
+    # Add the game
+    library.add_game()
+    
+    # Verify the game was added
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT pg.name, pg.console, pur.condition, pur.source, pur.price, pur.acquisition_date
+            FROM physical_games pg
+            JOIN purchased_games pur ON pg.id = pur.physical_game
+            WHERE pg.name = 'Test Game'
+        """)
+        game = cursor.fetchone()
+        
+        assert game is not None
+        assert game[0] == "Test Game"
+        assert game[1] == "Switch"
+        assert game[2] == "new"
+        assert game[3] == "Amazon"
+        assert float(game[4]) == 59.99  # Compare as float
+        assert game[5] == "2025-01-30"

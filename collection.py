@@ -154,35 +154,22 @@ class GameLibrary:
                     print("Invalid choice, cancelling game addition")
                     return
 
-            with self._db_connection() as conn:
-                result = add_game_to_database(conn, game, id_data)
-                print(result.message)
+        with self._db_connection() as conn:
+            result = add_game_to_database(conn, game, id_data)
+            print(result.message)
 
     def retrieve_prices(self):
         try:
             # First get total count of eligible games
             with self._db_connection() as conn:
                 cursor = conn.cursor()
-                
-                # Debug query using the exact same query as retrieve_games_for_prices
-                cursor.execute("""
-                    SELECT DISTINCT pricecharting_id
-                    FROM eligible_price_updates
-                    ORDER BY name ASC
-                """)
-                
-                print("\nDebug - Games needing updates:")
-                for row in cursor.fetchall():
-                    print(f"PriceCharting ID: {row[0]}")
-
-                # Original count query (same as above)
                 cursor.execute("""
                     SELECT COUNT(DISTINCT pricecharting_id)
                     FROM eligible_price_updates
                 """)
                 total_eligible = cursor.fetchone()[0]
                 
-                print(f"\nFound {total_eligible} games eligible for price updates")
+                print(f"\nFound {total_eligible} games eligible for price updates\n")
             
             max_prices = input('Maximum prices to retrieve (optional): ')
             max_prices = int(max_prices) if max_prices else None
@@ -212,7 +199,6 @@ class GameLibrary:
                 successful.append(get_game_prices(games[i]))
             except ValueError as err:
                 failed.append({'game': games[i], 'message': str(err)})
-                print(f"Error on game {games[i]}: {err}")
             
             if successful:
                 try:
@@ -318,7 +304,7 @@ class GameLibrary:
                     print("\nNo games found matching that term.")
                     return
 
-                print(f"\nFound {len(results)} games:")
+                print(f"\nFound {len(results)} games:\n")
                 for i, result in enumerate(results):
                     if result.is_wanted:
                         print(f"[{i}] {result.name} ({result.console}) - WISHLIST")

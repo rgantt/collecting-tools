@@ -77,35 +77,3 @@ def insert_price_records(games: List[Dict[str, Any]], db_path: str) -> None:
             (pricecharting_id, retrieve_time, price, condition)
             VALUES (?,?,?,?)
         """, records)
-
-        # Verify the insertions with raw timestamp data
-        cursor = con.cursor()
-        cursor.execute("""
-            SELECT pricecharting_id, 
-                   retrieve_time,
-                   typeof(retrieve_time),
-                   price, 
-                   condition,
-                   datetime('now', '-7 days')
-            FROM pricecharting_prices
-            ORDER BY retrieve_time DESC
-            LIMIT 5
-        """)
-        
-        print("\nDebug - Most recent records in database:")
-        for row in cursor.fetchall():
-            print(f"ID: {row[0]}")
-            print(f"  Time: {row[1]} (type: {row[2]})")
-            print(f"  Price: {row[3]}")
-            print(f"  Condition: {row[4]}")
-            print(f"  7 days ago: {row[5]}")
-            print()
-
-        # Check if any records are being found by the eligibility check
-        cursor.execute("""
-            SELECT COUNT(*) 
-            FROM pricecharting_prices 
-            WHERE retrieve_time >= datetime('now', '-7 days')
-        """)
-        recent_count = cursor.fetchone()[0]
-        print(f"Records found in last 7 days: {recent_count}") 
