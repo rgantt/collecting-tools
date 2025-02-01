@@ -9,115 +9,23 @@ import requests
 
 @pytest.fixture
 def db_connection():
-    """Create a temporary in-memory database for testing."""
-    con = sqlite3.connect(':memory:')
-    con.execute("PRAGMA foreign_keys = ON")
-
-    # Create tables
-    con.executescript("""
-        CREATE TABLE physical_games (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            console TEXT NOT NULL
-        );
-
-        CREATE TABLE pricecharting_games (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            pricecharting_id INTEGER UNIQUE,
-            name TEXT NOT NULL,
-            console TEXT NOT NULL,
-            url TEXT
-        );
-
-        CREATE TABLE physical_games_pricecharting_games (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            physical_game INTEGER NOT NULL,
-            pricecharting_game INTEGER NOT NULL,
-            FOREIGN KEY (physical_game) REFERENCES physical_games (id),
-            FOREIGN KEY (pricecharting_game) REFERENCES pricecharting_games (id)
-        );
-
-        CREATE TABLE pricecharting_prices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            retrieve_time TIMESTAMP,
-            pricecharting_id INTEGER NOT NULL,
-            condition TEXT,
-            price DECIMAL,
-            FOREIGN KEY (pricecharting_id) REFERENCES pricecharting_games (pricecharting_id)
-        );
-
-        CREATE TABLE purchased_games (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            physical_game INTEGER NOT NULL,
-            acquisition_date DATE NOT NULL CHECK (acquisition_date IS strftime('%Y-%m-%d', acquisition_date)),
-            source TEXT,
-            price DECIMAL,
-            condition TEXT,
-            FOREIGN KEY (physical_game) REFERENCES physical_games (id)
-        );
-
-        CREATE TABLE wanted_games (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            physical_game INTEGER NOT NULL,
-            FOREIGN KEY (physical_game) REFERENCES physical_games (id)
-        );
-
-        CREATE VIEW IF NOT EXISTS latest_prices AS
-        WITH base_games AS (
-            SELECT g.id, g.name, g.console
-            FROM physical_games g
-            LEFT JOIN purchased_games pg ON g.id = pg.physical_game
-            UNION
-            SELECT g.id, g.name, g.console
-            FROM physical_games g
-            JOIN wanted_games w ON g.id = w.physical_game
-        )
-        SELECT
-            g.name,
-            g.console,
-            z.pricecharting_id,
-            max(p.retrieve_time) as retrieve_time,
-            p.price,
-            p.condition
-        FROM base_games g
-        JOIN physical_games_pricecharting_games j
-            ON g.id = j.physical_game
-        JOIN pricecharting_games z
-            ON j.pricecharting_game = z.id
-        LEFT JOIN pricecharting_prices p
-            ON z.pricecharting_id = p.pricecharting_id
-        GROUP BY g.id, p.condition
-        ORDER BY g.name ASC;
-
-        CREATE VIEW IF NOT EXISTS eligible_price_updates AS
-        WITH latest_updates AS (
-            -- Get the most recent update time for each game, even if prices were null
-            SELECT 
-                pricecharting_id,
-                MAX(retrieve_time) as last_update
-            FROM pricecharting_prices
-            GROUP BY pricecharting_id
-        )
-        SELECT DISTINCT
-            g.name,
-            g.console,
-            z.pricecharting_id
-        FROM physical_games g
-        LEFT JOIN purchased_games pg
-            ON g.id = pg.physical_game
-        JOIN physical_games_pricecharting_games j
-            ON g.id = j.physical_game
-        JOIN pricecharting_games z
-            ON j.pricecharting_game = z.id
-        LEFT JOIN latest_updates lu
-            ON z.pricecharting_id = lu.pricecharting_id
-        WHERE lu.last_update IS NULL  -- Never attempted
-           OR datetime(lu.last_update) < datetime('now', '-7 days')  -- Or old attempt (even if it was null)
-        ORDER BY g.name ASC;
-    """)
-
-    yield con
-    con.close()
+    """Create a temporary in-memory SQLite database for testing.
+    
+    The database is initialized with the schema from schema/collection.sql.
+    The connection is automatically closed after the test completes.
+    Foreign key constraints are enabled.
+    
+    Yields:
+        sqlite3.Connection: A connection to the in-memory database.
+    """
+    conn = sqlite3.connect(':memory:')
+    conn.execute("PRAGMA foreign_keys = ON")
+    
+    with open('schema/collection.sql', 'r') as f:
+        conn.executescript(f.read())
+    
+    yield conn
+    conn.close()
 
 def test_null_price_handling(db_connection):
     """Test handling of null prices in price retrieval."""
@@ -307,63 +215,7 @@ def test_retrieve_games_with_numeric_max_prices(db_connection):
         (5, '2024-01-01', 'Store', 59.99, 'new')   # Game E
     ])
 
-    # Create the views
-    db_connection.executescript("""
-        CREATE VIEW IF NOT EXISTS latest_prices AS
-        WITH base_games AS (
-            SELECT g.id, g.name, g.console
-            FROM physical_games g
-            LEFT JOIN purchased_games pg ON g.id = pg.physical_game
-            UNION
-            SELECT g.id, g.name, g.console
-            FROM physical_games g
-            JOIN wanted_games w ON g.id = w.physical_game
-        )
-        SELECT
-            g.name,
-            g.console,
-            z.pricecharting_id,
-            max(p.retrieve_time) as retrieve_time,
-            p.price,
-            p.condition
-        FROM base_games g
-        JOIN physical_games_pricecharting_games j
-            ON g.id = j.physical_game
-        JOIN pricecharting_games z
-            ON j.pricecharting_game = z.id
-        LEFT JOIN pricecharting_prices p
-            ON z.pricecharting_id = p.pricecharting_id
-        GROUP BY g.id, p.condition
-        ORDER BY g.name ASC;
-
-        CREATE VIEW IF NOT EXISTS eligible_price_updates AS
-        WITH latest_updates AS (
-            -- Get the most recent update time for each game, even if prices were null
-            SELECT 
-                pricecharting_id,
-                MAX(retrieve_time) as last_update
-            FROM pricecharting_prices
-            GROUP BY pricecharting_id
-        )
-        SELECT DISTINCT
-            g.name,
-            g.console,
-            z.pricecharting_id
-        FROM physical_games g
-        LEFT JOIN purchased_games pg
-            ON g.id = pg.physical_game
-        JOIN physical_games_pricecharting_games j
-            ON g.id = j.physical_game
-        JOIN pricecharting_games z
-            ON j.pricecharting_game = z.id
-        LEFT JOIN latest_updates lu
-            ON z.pricecharting_id = lu.pricecharting_id
-        WHERE lu.last_update IS NULL  -- Never attempted
-           OR datetime(lu.last_update) < datetime('now', '-7 days')  -- Or old attempt (even if it was null)
-        ORDER BY g.name ASC;
-    """)
-
-    # Commit changes to ensure views are updated
+    # Commit changes
     db_connection.commit()
 
     # Test retrieving all eligible games (no limit)

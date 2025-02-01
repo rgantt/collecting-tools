@@ -8,11 +8,23 @@ from lib.collection_utils import (
 
 @pytest.fixture
 def db_connection():
-    """Create an in-memory database for testing."""
+    """Create a temporary in-memory SQLite database for testing.
+    
+    The database is initialized with the schema from schema/collection.sql.
+    The connection is automatically closed after the test completes.
+    Foreign key constraints are enabled.
+    
+    Yields:
+        sqlite3.Connection: A connection to the in-memory database.
+    """
     conn = sqlite3.connect(':memory:')
+    conn.execute("PRAGMA foreign_keys = ON")
+    
     with open('schema/collection.sql', 'r') as f:
         conn.executescript(f.read())
-    return conn
+    
+    yield conn
+    conn.close()
 
 @pytest.fixture
 def sample_game(db_connection):

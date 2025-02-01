@@ -40,6 +40,26 @@ def sample_soup():
 def sample_soup_multiple_upcs():
     return BeautifulSoup(SAMPLE_HTML_MULTIPLE_UPCS, 'html.parser')
 
+@pytest.fixture
+def db_connection():
+    """Create a temporary in-memory SQLite database for testing.
+    
+    The database is initialized with the schema from schema/collection.sql.
+    The connection is automatically closed after the test completes.
+    Foreign key constraints are enabled.
+    
+    Yields:
+        sqlite3.Connection: A connection to the in-memory database.
+    """
+    conn = sqlite3.connect(':memory:')
+    conn.execute("PRAGMA foreign_keys = ON")
+    
+    with open('schema/collection.sql', 'r') as f:
+        conn.executescript(f.read())
+    
+    yield conn
+    conn.close()
+
 def test_extract_id(sample_soup):
     assert extract_id(sample_soup) == "Super Mario 64"
 

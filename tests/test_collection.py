@@ -20,11 +20,23 @@ from lib.price_retrieval import insert_price_records
 
 @pytest.fixture
 def db_connection():
-    """Create an in-memory database for testing."""
+    """Create a temporary in-memory SQLite database for testing.
+    
+    The database is initialized with the schema from schema/collection.sql.
+    The connection is automatically closed after the test completes.
+    Foreign key constraints are enabled.
+    
+    Yields:
+        sqlite3.Connection: A connection to the in-memory database.
+    """
     conn = sqlite3.connect(':memory:')
+    conn.execute("PRAGMA foreign_keys = ON")
+    
     with open('schema/collection.sql', 'r') as f:
         conn.executescript(f.read())
-    return conn
+    
+    yield conn
+    conn.close()
 
 @pytest.fixture
 def initialized_library(tmp_path, monkeypatch):
@@ -192,11 +204,6 @@ def test_get_recent_additions(db_connection):
 def test_price_retrieval_and_storage(db_connection):
     """Test that retrieved prices are correctly saved and marked as up-to-date."""
     cursor = db_connection.cursor()
-    
-    # Initialize schema
-    with open('schema/collection.sql', 'r') as f:
-        schema = f.read()
-        cursor.executescript(schema)
     
     # Add physical game
     cursor.execute("""
