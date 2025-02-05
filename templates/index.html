@@ -8,24 +8,36 @@
     <style>
         .sortable {
             cursor: pointer;
+            position: relative;
+            padding-right: 18px !important;
         }
-        .sortable:hover {
-            background-color: rgba(0,0,0,0.05);
-        }
-        .sort-indicator::after {
+        
+        .sortable::after {
             content: '↕';
-            margin-left: 5px;
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
             opacity: 0.3;
         }
-        .sort-asc::after {
+        
+        .sortable.sort-asc::after {
             content: '↑';
-            margin-left: 5px;
             opacity: 1;
         }
-        .sort-desc::after {
+        
+        .sortable.sort-desc::after {
             content: '↓';
-            margin-left: 5px;
             opacity: 1;
+        }
+        
+        .pagination {
+            justify-content: center;
+            margin-top: 1rem;
+        }
+        
+        .table th {
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -492,33 +504,49 @@
             }
             
             // Setup sorting functionality
-            function setupSorting() {
-                document.querySelectorAll('.sortable').forEach(header => {
-                    header.addEventListener('click', function() {
-                        const sort = this.dataset.sort;
-                        const table = this.dataset.table || 'collection';
-                        const currentOrder = this.classList.contains('sort-asc') ? 'desc' : 'asc';
+            function setupSorting(tableId, defaultSort = 'name', defaultOrder = 'asc') {
+                const table = document.getElementById(tableId);
+                if (!table) return;
+                
+                // Get current sort parameters from URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const currentSort = urlParams.get('sort') || defaultSort;
+                const currentOrder = urlParams.get('order') || defaultOrder;
+                
+                // Add click handlers to sortable headers
+                table.querySelectorAll('th.sortable').forEach(header => {
+                    const sortField = header.dataset.sort;
+                    
+                    // Add sort indicators
+                    if (sortField === currentSort) {
+                        header.classList.add('sort-' + currentOrder);
+                    }
+                    
+                    header.addEventListener('click', () => {
+                        let newOrder = 'asc';
                         
-                        // Build URL with current parameters
-                        const urlParams = new URLSearchParams(window.location.search);
-                        
-                        if (table === 'wishlist') {
-                            urlParams.set('wishlist_sort', sort);
-                            urlParams.set('wishlist_order', currentOrder);
-                        } else {
-                            urlParams.set('sort', sort);
-                            urlParams.set('order', currentOrder);
+                        // If already sorting by this field, toggle order
+                        if (sortField === currentSort) {
+                            newOrder = currentOrder === 'asc' ? 'desc' : 'asc';
                         }
                         
-                        window.location.href = '?' + urlParams.toString();
+                        // Update URL and reload
+                        const url = new URL(window.location);
+                        url.searchParams.set('sort', sortField);
+                        url.searchParams.set('order', newOrder);
+                        url.searchParams.set('page', '1');  // Reset to first page when sorting
+                        window.location = url;
                     });
                 });
             }
+
+            // Setup sorting for both tables
+            setupSorting('collectionTable', 'acquisition_date', 'desc');
+            setupSorting('wishlistTable', 'name', 'asc');
             
             // Setup search for both tables
             setupTableSearch('collectionSearch', renderCollectionGames);
             setupTableSearch('wishlistSearch', renderWishlistGames);
-            setupSorting();
             
             // Load all games immediately
             loadAllGames();

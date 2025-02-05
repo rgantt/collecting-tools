@@ -49,30 +49,35 @@ def get_collection_games(page=1, per_page=30, sort_by='acquisition_date', sort_o
                     price,
                     ROW_NUMBER() OVER (PARTITION BY pricecharting_id, condition ORDER BY retrieve_time DESC) as rn
                 FROM pricecharting_prices
+            ),
+            games_with_prices AS (
+                SELECT 
+                    p.name as name,
+                    p.console as console,
+                    pg.condition as condition,
+                    s.name as source,
+                    CAST(pg.price AS DECIMAL) as purchase_price,
+                    CAST(lp.price AS DECIMAL) as current_price,
+                    pg.acquisition_date as date,
+                    (CAST(lp.price AS DECIMAL) - CAST(pg.price AS DECIMAL)) as value_change
+                FROM physical_games p
+                JOIN purchased_games pg ON p.id = pg.physical_game
+                LEFT JOIN sources s ON pg.source = s.name
+                LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
+                LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+                LEFT JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id 
+                    AND LOWER(lp.condition) = LOWER(pg.condition)
+                    AND lp.rn = 1
             )
-            SELECT 
-                p.name,
-                p.console,
-                pg.condition,
-                s.name as source,
-                pg.price as purchase_price,
-                CAST(lp.price AS DECIMAL) as current_price,
-                pg.acquisition_date as date
-            FROM physical_games p
-            JOIN purchased_games pg ON p.id = pg.physical_game
-            LEFT JOIN sources s ON pg.source = s.name
-            LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
-            LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
-            LEFT JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id 
-                AND LOWER(lp.condition) = LOWER(pg.condition)
-                AND lp.rn = 1
-            ORDER BY {sort_field} {sort_direction}, p.name
+            SELECT *
+            FROM games_with_prices
+            ORDER BY {sort_field} {sort_direction} NULLS LAST, name
             LIMIT ? OFFSET ?
         """, (per_page, (page - 1) * per_page))
         
         collection_games = []
         for row in cursor.fetchall():
-            name, console, condition, source, purchase_price, current_price, date = row
+            name, console, condition, source, purchase_price, current_price, date, _ = row
             collection_games.append({
                 'name': name,
                 'console': console,
@@ -137,15 +142,16 @@ def get_wishlist_items_sorted(wishlist_sort='name', wishlist_order='asc'):
 
 def get_sort_field(sort_by: str) -> str:
     valid_sort_fields = {
-        'name': 'p.name',
-        'console': 'p.console',
-        'condition': 'pg.condition',
-        'source': 's.name',
-        'purchase_price': 'pg.price',
-        'current_price': 'lp.price',
-        'acquisition_date': 'pg.acquisition_date'
+        'name': 'name',
+        'console': 'console',
+        'condition': 'condition',
+        'source': 'source',
+        'purchase_price': 'purchase_price',
+        'current_price': 'current_price',
+        'value_change': 'value_change',
+        'acquisition_date': 'date'
     }
-    return valid_sort_fields.get(sort_by, 'pg.acquisition_date')
+    return valid_sort_fields.get(sort_by, 'date')
 
 def get_wishlist_sort_field(sort_by: str) -> str:
     valid_sort_fields = {
