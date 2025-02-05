@@ -361,29 +361,45 @@
                 }
             }
             
-            // Setup table search functionality
-            function setupTableSearch() {
-                console.log('Setting up table search');
-                const searchInput = document.getElementById('collectionSearch');
-                if (!searchInput) {
-                    console.error('Search input not found!');
-                    return;
-                }
-                
-                let debounceTimeout;
-                searchInput.addEventListener('input', (e) => {
-                    console.log('Search input changed:', e.target.value);
-                    clearTimeout(debounceTimeout);
-                    debounceTimeout = setTimeout(() => {
-                        const searchTerm = e.target.value;
-                        console.log('Filtering with term:', searchTerm);
-                        const filtered = filterGames(allGames, searchTerm);
-                        console.log('Found filtered games:', filtered.length);
-                        renderGames(filtered, false, 1); // Reset to first page when filtering
-                    }, 300);
+            // Sort games by a specific key
+            function sortGames(games, sortKey, sortOrder) {
+                return [...games].sort((a, b) => {
+                    let aVal, bVal;
+                    
+                    // Handle special sorting cases
+                    if (sortKey === 'status') {
+                        aVal = a.is_wanted ? '1' : '0';
+                        bVal = b.is_wanted ? '1' : '0';
+                    } else if (sortKey === 'value_change' && !a.is_wanted && !b.is_wanted) {
+                        if (!a.current_price || !a.purchase_price) return 1;
+                        if (!b.current_price || !b.purchase_price) return -1;
+                        aVal = ((a.current_price - a.purchase_price) / a.purchase_price) * 100;
+                        bVal = ((b.current_price - b.purchase_price) / b.purchase_price) * 100;
+                    } else if (sortKey === 'current_price') {
+                        aVal = parseFloat(a[sortKey]) || 0;
+                        bVal = parseFloat(b[sortKey]) || 0;
+                    } else if (sortKey === 'date') {
+                        aVal = new Date(a[sortKey]);
+                        bVal = new Date(b[sortKey]);
+                    } else {
+                        aVal = a[sortKey];
+                        bVal = b[sortKey];
+                    }
+                    
+                    // Handle null/undefined values
+                    if (aVal === null || aVal === undefined) return 1;
+                    if (bVal === null || bVal === undefined) return -1;
+                    
+                    // Compare values
+                    if (typeof aVal === 'string') {
+                        return sortOrder === 'asc' ? 
+                            aVal.localeCompare(bVal) : 
+                            bVal.localeCompare(aVal);
+                    }
+                    return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
                 });
             }
-            
+
             // Setup sorting functionality
             function setupSorting(tableId, defaultSort = 'name', defaultOrder = 'asc') {
                 console.log('Setting up sorting');
@@ -425,42 +441,34 @@
                         
                         // Sort the games
                         console.log('Sorting games, count:', filteredGames.length);
-                        const sortedGames = [...filteredGames].sort((a, b) => {
-                            let aVal, bVal;
-                            
-                            // Handle special sorting cases
-                            if (sortKey === 'status') {
-                                aVal = a.is_wanted ? '1' : '0'; // Convert to string for consistent sorting
-                                bVal = b.is_wanted ? '1' : '0';
-                            } else if (sortKey === 'value_change' && !a.is_wanted && !b.is_wanted) {
-                                if (!a.current_price || !a.purchase_price) return 1;
-                                if (!b.current_price || !b.purchase_price) return -1;
-                                aVal = ((a.current_price - a.purchase_price) / a.purchase_price) * 100;
-                                bVal = ((b.current_price - b.purchase_price) / b.purchase_price) * 100;
-                            } else if (sortKey === 'current_price') {
-                                aVal = parseFloat(a[sortKey]) || 0;
-                                bVal = parseFloat(b[sortKey]) || 0;
-                            } else {
-                                aVal = a[sortKey];
-                                bVal = b[sortKey];
-                            }
-                            
-                            // Handle null/undefined values
-                            if (aVal === null || aVal === undefined) return 1;
-                            if (bVal === null || bVal === undefined) return -1;
-                            
-                            // Compare values
-                            if (typeof aVal === 'string') {
-                                return currentOrder === 'asc' ? 
-                                    aVal.localeCompare(bVal) : 
-                                    bVal.localeCompare(aVal);
-                            }
-                            return currentOrder === 'asc' ? aVal - bVal : bVal - aVal;
-                        });
-                        
-                        console.log('Sorted games, rendering...');
+                        const sortedGames = sortGames(filteredGames, currentSort, currentOrder);
                         renderGames(sortedGames, true, 1); // Reset to first page when sorting
                     });
+                });
+                
+                return { currentSort, currentOrder };
+            }
+
+            // Setup table search functionality
+            function setupTableSearch() {
+                console.log('Setting up table search');
+                const searchInput = document.getElementById('collectionSearch');
+                if (!searchInput) {
+                    console.error('Search input not found!');
+                    return;
+                }
+                
+                let debounceTimeout;
+                searchInput.addEventListener('input', (e) => {
+                    console.log('Search input changed:', e.target.value);
+                    clearTimeout(debounceTimeout);
+                    debounceTimeout = setTimeout(() => {
+                        const searchTerm = e.target.value;
+                        console.log('Filtering with term:', searchTerm);
+                        const filtered = filterGames(allGames, searchTerm);
+                        console.log('Found filtered games:', filtered.length);
+                        renderGames(filtered, false, 1); // Reset to first page when filtering
+                    }, 300);
                 });
             }
 
@@ -468,7 +476,10 @@
             console.log('Starting initialization...');
             await loadAllGames(); // Load all games first
             setupTableSearch();
-            setupSorting('collectionTable', 'date', 'desc');
+            const { currentSort, currentOrder } = setupSorting('collectionTable', 'date', 'desc');
+            // Apply initial sort
+            const initialSortedGames = sortGames(filteredGames, currentSort, currentOrder);
+            renderGames(initialSortedGames, true, 1);
             console.log('Initialization complete');
         });
     </script>
