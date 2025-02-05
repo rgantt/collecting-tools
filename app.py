@@ -1,13 +1,31 @@
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify, session
 from pathlib import Path
 from contextlib import contextmanager
 import sqlite3
 from lib.collection_utils import get_wishlist_items
 from urllib.parse import urlencode
 from werkzeug.datastructures import MultiDict
+from auth import auth_bp, oauth, requires_auth
+from auth_config import SECRET_KEY
+import os
 
 app = Flask(__name__)
+app.secret_key = SECRET_KEY
+
+# Session configuration
+app.config.update(
+    SESSION_COOKIE_SECURE=False,  # Set to True in production with HTTPS
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax'
+)
+
 db_path = Path("games.db")
+
+# Initialize OAuth
+oauth.init_app(app)
+
+# Register auth blueprint
+app.register_blueprint(auth_bp)
 
 # Add built-in functions to Jinja environment
 app.jinja_env.globals.update(min=min, max=max, range=range)
@@ -173,6 +191,7 @@ def get_wishlist_sort_field(sort_by: str) -> str:
     return valid_sort_fields.get(sort_by, 'p.name')
 
 @app.route('/')
+@requires_auth
 def index():
     page = request.args.get('page', 1, type=int)
     per_page = 30
@@ -205,6 +224,7 @@ def index():
                          wishlist_order=wishlist_order)
 
 @app.route('/api/collection')
+@requires_auth
 def get_all_collection_games():
     """Get all games (both purchased and wanted) for client-side operations."""
     with get_db() as db:
@@ -263,6 +283,7 @@ def get_all_collection_games():
         return jsonify(games)
 
 @app.route('/api/wishlist')
+@requires_auth
 def get_all_wishlist():
     sort_by = request.args.get('sort', 'name')
     sort_order = request.args.get('order', 'asc')

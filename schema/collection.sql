@@ -69,15 +69,10 @@ CREATE TABLE IF NOT EXISTS purchased_games (
 CREATE TABLE IF NOT EXISTS wanted_games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     physical_game INTEGER NOT NULL,
+    condition TEXT DEFAULT 'complete'
     
     FOREIGN KEY (physical_game) REFERENCES physical_games (id)
 );
-
--- Add condition column to wanted_games if it doesn't exist
-ALTER TABLE wanted_games ADD COLUMN condition TEXT DEFAULT 'complete';
-
--- Update existing wishlist items to use 'complete' condition
-UPDATE wanted_games SET condition = 'complete' WHERE condition IS NULL;
 
 CREATE VIEW IF NOT EXISTS latest_prices AS
 WITH base_games AS (
