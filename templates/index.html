@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Collection Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .sortable {
+            cursor: pointer;
+        }
+        .sortable:hover {
+            background-color: rgba(0,0,0,0.05);
+        }
+        .sort-indicator::after {
+            content: '↕';
+            margin-left: 5px;
+            opacity: 0.3;
+        }
+        .sort-asc::after {
+            content: '↑';
+            margin-left: 5px;
+            opacity: 1;
+        }
+        .sort-desc::after {
+            content: '↓';
+            margin-left: 5px;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <h1 class="mb-4">Game Collection Manager</h1>
+        
+        <!-- Collection Games -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="h4 mb-0">Collection Games</h2>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <input type="text" 
+                           id="collectionSearch" 
+                           class="form-control" 
+                           placeholder="Filter games...">
+                    <div id="resultCount" class="text-muted mb-2"></div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table" id="collectionTable">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="name">Game ↕</th>
+                                <th class="sortable" data-sort="console">Console ↕</th>
+                                <th class="sortable" data-sort="condition">Condition ↕</th>
+                                <th class="sortable" data-sort="source">Source ↕</th>
+                                <th class="sortable" data-sort="purchase_price">Purchase Price ↕</th>
+                                <th class="sortable" data-sort="current_price">Current Price ↕</th>
+                                <th class="sortable" data-sort="value_change">Value Change ↕</th>
+                                <th class="sortable" data-sort="date">Added Date ↕</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for game in collection_games %}
+                            <tr>
+                                <td>{{ game.name }}</td>
+                                <td>{{ game.console }}</td>
+                                <td>{{ game.condition or '-' }}</td>
+                                <td>{{ game.source or '-' }}</td>
+                                <td>${{ "%.2f"|format(game.purchase_price) if game.purchase_price else '-' }}</td>
+                                <td>${{ "%.2f"|format(game.current_price) if game.current_price else '-' }}</td>
+                                <td>
+                                    {% if game.current_price and game.purchase_price %}
+                                        {% set change = game.current_price - game.purchase_price %}
+                                        <span class="{{ 'text-success' if change >= 0 else 'text-danger' }}">
+                                            {{ '+' if change >= 0 else '-' }}${{ "%.2f"|format(change|abs) }}
+                                        </span>
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>{{ game.date }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    
+                    <!-- Server-side pagination -->
+                    {% if not request.args.get('search') %}
+                    <nav id="collectionPagination" aria-label="Collection pagination">
+                        <ul class="pagination">
+                            <li class="page-item {{ 'disabled' if current_page == 1 }}">
+                                <a class="page-link" href="{{ request.args|update_url_params(page=current_page - 1) if current_page > 1 else '#' }}">Previous</a>
+                            </li>
+                            
+                            {# First 4 pages #}
+                            {% for p in range(1, min(5, total_pages + 1)) %}
+                                <li class="page-item {{ 'active' if p == current_page }}">
+                                    <a class="page-link" href="{{ request.args|update_url_params(page=p) }}">{{ p }}</a>
+                                </li>
+                            {% endfor %}
+                            
+                            {# Ellipsis after start if needed #}
+                            {% if current_page - 2 > 4 %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">...</span>
+                                </li>
+                            {% endif %}
+                            
+                            {# Pages around current page #}
+                            {% for p in range(max(5, current_page - 2), min(current_page + 3, total_pages - 3)) %}
+                                {% if p not in range(1, 5) and p not in range(total_pages - 3, total_pages + 1) %}
+                                    <li class="page-item {{ 'active' if p == current_page }}">
+                                        <a class="page-link" href="{{ request.args|update_url_params(page=p) }}">{{ p }}</a>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {# Ellipsis before end if needed #}
+                            {% if current_page + 2 < total_pages - 3 %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">...</span>
+                                </li>
+                            {% endif %}
+                            
+                            {# Last 4 pages #}
+                            {% for p in range(max(total_pages - 3, min(5, total_pages)), total_pages + 1) %}
+                                <li class="page-item {{ 'active' if p == current_page }}">
+                                    <a class="page-link" href="{{ request.args|update_url_params(page=p) }}">{{ p }}</a>
+                                </li>
+                            {% endfor %}
+                            
+                            <li class="page-item {{ 'disabled' if current_page == total_pages }}">
+                                <a class="page-link" href="{{ request.args|update_url_params(page=current_page + 1) if current_page < total_pages else '#' }}">Next</a>
+                            </li>
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+                
+                <!-- Pagination -->
+                
+            </div>
+        </div>
+
+        <!-- Wishlist -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h4 mb-0">Wishlist</h2>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <input type="text" 
+                           id="wishlistSearch" 
+                           class="form-control" 
+                           placeholder="Search wishlist...">
+                </div>
+                <div class="table-responsive">
+                    <table class="table" id="wishlistTable">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="name">Game ↕</th>
+                                <th class="sortable" data-sort="console">Console ↕</th>
+                                <th class="sortable" data-sort="price_complete">Price (Complete) ↕</th>
+                                <th class="sortable" data-sort="price_loose">Price (Loose) ↕</th>
+                                <th class="sortable" data-sort="price_new">Price (New) ↕</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for game in wishlist %}
+                            <tr>
+                                <td>{{ game.name }}</td>
+                                <td>{{ game.console }}</td>
+                                <td>${{ "%.2f"|format(game.price_complete) if game.price_complete else '-' }}</td>
+                                <td>${{ "%.2f"|format(game.price_loose) if game.price_loose else '-' }}</td>
+                                <td>${{ "%.2f"|format(game.price_new) if game.price_new else '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let allCollectionGames = [];  // Store all games from API
+            let allWishlistGames = [];    // Store all games from API
+            let filteredCollectionGames = []; // Store filtered games for pagination
+            
+            // Initialize with server-rendered page data
+            let collectionGames = [
+                {% for game in collection_games %}
+                {
+                    name: {{ game.name|tojson }},
+                    console: {{ game.console|tojson }},
+                    condition: {{ game.condition|tojson }},
+                    source: {{ game.source|tojson }},
+                    purchase_price: {{ game.purchase_price|tojson }},
+                    current_price: {{ game.current_price|tojson }},
+                    date: {{ game.date|tojson }}
+                }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ];
+            
+            let wishlistGames = [
+                {% for game in wishlist %}
+                {
+                    name: {{ game.name|tojson }},
+                    console: {{ game.console|tojson }},
+                    price_complete: {{ game.price_complete|tojson }},
+                    price_loose: {{ game.price_loose|tojson }},
+                    price_new: {{ game.price_new|tojson }}
+                }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ];
+            
+            // Load all games data
+            async function loadAllGames() {
+                try {
+                    console.log('Loading all games data...');
+                    const [collectionResponse, wishlistResponse] = await Promise.all([
+                        fetch('/api/collection'),
+                        fetch('/api/wishlist')
+                    ]);
+                    
+                    if (!collectionResponse.ok) {
+                        throw new Error(`Collection API error: ${collectionResponse.status}`);
+                    }
+                    if (!wishlistResponse.ok) {
+                        throw new Error(`Wishlist API error: ${wishlistResponse.status}`);
+                    }
+                    
+                    allCollectionGames = await collectionResponse.json();
+                    allWishlistGames = await wishlistResponse.json();
+                    
+                    console.log('Loaded all collection games:', allCollectionGames.length);
+                    console.log('Loaded all wishlist games:', allWishlistGames.length);
+                    
+                    // Re-filter with current search terms using full dataset
+                    const collectionSearch = document.getElementById('collectionSearch');
+                    if (collectionSearch && collectionSearch.value) {
+                        const filteredGames = filterGames(allCollectionGames, collectionSearch.value);
+                        console.log('Filtering collection games:', filteredGames.length);
+                        renderCollectionGames(filteredGames);
+                    }
+                } catch (error) {
+                    console.error('Error loading games:', error);
+                }
+            }
+            
+            // Format currency
+            function formatCurrency(value) {
+                if (value === null || value === undefined) return '-';
+                return '$' + value.toFixed(2);
+            }
+            
+            // Format value change
+            function formatValueChange(current, purchase) {
+                if (!current || !purchase) return '-';
+                const change = current - purchase;
+                const formatted = formatCurrency(Math.abs(change));
+                return change >= 0 ? 
+                    `<span class="text-success">+${formatted}</span>` :
+                    `<span class="text-danger">-${formatted}</span>`;
+            }
+            
+            // Generate pagination HTML with ellipses
+            function generatePaginationHTML(currentPage, totalPages) {
+                const maxVisiblePages = 15;
+                const edgePages = 4;  // Number of pages to show at start/end
+                const surroundingPages = 2;  // Number of pages around current
+                
+                let pages = [];
+                
+                // Always show first edgePages
+                for (let i = 1; i <= Math.min(edgePages, totalPages); i++) {
+                    pages.push(i);
+                }
+                
+                // Calculate range around current page
+                let rangeStart = Math.max(edgePages + 1, currentPage - surroundingPages);
+                let rangeEnd = Math.min(totalPages - edgePages, currentPage + surroundingPages);
+                
+                // Add ellipsis after start if there's a gap
+                if (rangeStart > edgePages + 1) {
+                    pages.push('...');
+                }
+                
+                // Add pages around current page
+                for (let i = rangeStart; i <= rangeEnd; i++) {
+                    if (!pages.includes(i)) {
+                        pages.push(i);
+                    }
+                }
+                
+                // Add ellipsis before end if there's a gap
+                if (rangeEnd < totalPages - edgePages) {
+                    pages.push('...');
+                }
+                
+                // Always show last edgePages if not already included
+                for (let i = Math.max(totalPages - edgePages + 1, rangeEnd + 1); i <= totalPages; i++) {
+                    if (!pages.includes(i)) {
+                        pages.push(i);
+                    }
+                }
+                
+                // Generate HTML
+                return `
+                    <ul class="pagination">
+                        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                            <a class="page-link" href="#" data-page="${currentPage - 1}">Previous</a>
+                        </li>
+                        ${pages.map(page => {
+                            if (page === '...') {
+                                return '<li class="page-item disabled"><span class="page-link">...</span></li>';
+                            }
+                            return `
+                                <li class="page-item ${page === currentPage ? 'active' : ''}">
+                                    <a class="page-link" href="#" data-page="${page}">${page}</a>
+                                </li>
+                            `;
+                        }).join('')}
+                        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                            <a class="page-link" href="#" data-page="${currentPage + 1}">Next</a>
+                        </li>
+                    </ul>
+                `;
+            }
+
+            // Render collection games with pagination
+            function renderCollectionGames(games, preserveFilteredGames = false) {
+                console.log('Rendering collection games:', games.length);
+                const tbody = document.querySelector('#collectionTable tbody');
+                const pagination = document.getElementById('collectionPagination');
+                if (!tbody) {
+                    console.error('Collection table body not found!');
+                    return;
+                }
+
+                // Store filtered games if this is a new filter operation
+                if (preserveFilteredGames) {
+                    filteredCollectionGames = games;
+                } else {
+                    games = filteredCollectionGames;
+                }
+
+                const isFiltering = document.getElementById('collectionSearch').value;
+                const itemsPerPage = 30;
+                
+                // Get current page from URL or default to 1
+                const urlParams = new URLSearchParams(window.location.search);
+                let currentPage = parseInt(urlParams.get('page')) || 1;
+
+                // If filtering and more than 30 results, setup client-side pagination
+                if (isFiltering && games.length > itemsPerPage) {
+                    // Calculate total pages
+                    const totalPages = Math.ceil(games.length / itemsPerPage);
+                    
+                    // Ensure current page is valid
+                    currentPage = Math.max(1, Math.min(currentPage, totalPages));
+                    
+                    // Slice games array for current page
+                    const startIndex = (currentPage - 1) * itemsPerPage;
+                    const endIndex = startIndex + itemsPerPage;
+                    const pageGames = games.slice(startIndex, endIndex);
+                    
+                    // Show total results count
+                    const resultCount = document.getElementById('resultCount');
+                    if (resultCount) {
+                        resultCount.textContent = `Showing ${startIndex + 1}-${Math.min(endIndex, games.length)} of ${games.length} results`;
+                    }
+                    
+                    // Render pagination controls
+                    if (pagination) {
+                        pagination.style.display = '';
+                        pagination.innerHTML = generatePaginationHTML(currentPage, totalPages);
+                        
+                        // Add click handlers for pagination
+                        pagination.querySelectorAll('.page-link').forEach(link => {
+                            link.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                const newPage = parseInt(e.target.dataset.page);
+                                if (newPage && newPage !== currentPage && newPage > 0 && newPage <= totalPages) {
+                                    // Update URL without reloading
+                                    const url = new URL(window.location);
+                                    url.searchParams.set('page', newPage);
+                                    window.history.pushState({}, '', url);
+                                    // Re-render with new page
+                                    renderCollectionGames(games);
+                                }
+                            });
+                        });
+                        
+                        // Render the current page of games
+                        games = pageGames;
+                    }
+                } else if (isFiltering) {
+                    // Hide pagination for small filtered result sets
+                    if (pagination) {
+                        pagination.style.display = 'none';
+                    }
+                    // Show all results
+                    games = filteredCollectionGames;
+                    
+                    // Show total results count
+                    const resultCount = document.getElementById('resultCount');
+                    if (resultCount) {
+                        resultCount.textContent = `Showing all ${games.length} results`;
+                    }
+                } else {
+                    // Not filtering - use server-side pagination
+                    if (pagination) {
+                        pagination.style.display = '';
+                    }
+                }
+
+                // Render the games
+                tbody.innerHTML = games.map(game => `
+                    <tr>
+                        <td>${game.name}</td>
+                        <td>${game.console}</td>
+                        <td>${game.condition || '-'}</td>
+                        <td>${game.source || '-'}</td>
+                        <td>${formatCurrency(game.purchase_price)}</td>
+                        <td>${formatCurrency(game.current_price)}</td>
+                        <td>${formatValueChange(game.current_price, game.purchase_price)}</td>
+                        <td>${game.date}</td>
+                    </tr>
+                `).join('');
+            }
+            
+            // Render wishlist games
+            function renderWishlistGames(games) {
+                console.log('Rendering wishlist games:', games.length);
+                const tbody = document.querySelector('#wishlistTable tbody');
+                if (!tbody) {
+                    console.error('Wishlist table body not found!');
+                    return;
+                }
+                tbody.innerHTML = games.map(game => `
+                    <tr>
+                        <td>${game.name}</td>
+                        <td>${game.console}</td>
+                        <td>${formatCurrency(game.price_complete)}</td>
+                        <td>${formatCurrency(game.price_loose)}</td>
+                        <td>${formatCurrency(game.price_new)}</td>
+                    </tr>
+                `).join('');
+            }
+            
+            // Filter games
+            function filterGames(games, searchTerm) {
+                if (!searchTerm) return games;
+                searchTerm = searchTerm.toLowerCase();
+                console.log('Filtering games with term:', searchTerm);
+                return games.filter(game => {
+                    const matchesName = game.name && game.name.toLowerCase().includes(searchTerm);
+                    const matchesConsole = game.console && game.console.toLowerCase().includes(searchTerm);
+                    return matchesName || matchesConsole;
+                });
+            }
+            
+            // Setup table search functionality
+            function setupTableSearch(searchInputId, renderFunction) {
+                const searchInput = document.getElementById(searchInputId);
+                if (!searchInput) return;
+                
+                searchInput.addEventListener('input', function() {
+                    const searchTerm = this.value;
+                    console.log('Search term:', searchTerm);
+                    
+                    // Use the full dataset from API if available, otherwise use page data
+                    const games = searchInputId === 'collectionSearch' ? 
+                        (allCollectionGames.length > 0 ? allCollectionGames : collectionGames) :
+                        (allWishlistGames.length > 0 ? allWishlistGames : wishlistGames);
+                    
+                    const filteredGames = filterGames(games, searchTerm);
+                    console.log('Filtered games:', filteredGames.length);
+                    
+                    // Reset to page 1 when filtering
+                    const url = new URL(window.location);
+                    url.searchParams.set('page', '1');
+                    window.history.pushState({}, '', url);
+                    
+                    // Render with the new filter, preserving filtered games
+                    renderFunction(filteredGames, true);
+                });
+            }
+            
+            // Setup sorting functionality
+            function setupSorting() {
+                document.querySelectorAll('.sortable').forEach(header => {
+                    header.addEventListener('click', function() {
+                        const sort = this.dataset.sort;
+                        const table = this.dataset.table || 'collection';
+                        const currentOrder = this.classList.contains('sort-asc') ? 'desc' : 'asc';
+                        
+                        // Build URL with current parameters
+                        const urlParams = new URLSearchParams(window.location.search);
+                        
+                        if (table === 'wishlist') {
+                            urlParams.set('wishlist_sort', sort);
+                            urlParams.set('wishlist_order', currentOrder);
+                        } else {
+                            urlParams.set('sort', sort);
+                            urlParams.set('order', currentOrder);
+                        }
+                        
+                        window.location.href = '?' + urlParams.toString();
+                    });
+                });
+            }
+            
+            // Setup search for both tables
+            setupTableSearch('collectionSearch', renderCollectionGames);
+            setupTableSearch('wishlistSearch', renderWishlistGames);
+            setupSorting();
+            
+            // Load all games immediately
+            loadAllGames();
+            
+            // Add keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                    e.preventDefault();
+                    // Focus the search input of the table that's more in view
+                    const collectionTable = document.getElementById('collectionTable');
+                    const wishlistTable = document.getElementById('wishlistTable');
+                    const collectionRect = collectionTable?.getBoundingClientRect();
+                    const wishlistRect = wishlistTable?.getBoundingClientRect();
+                    
+                    if (collectionRect && wishlistRect) {
+                        if (Math.abs(collectionRect.top) < Math.abs(wishlistRect.top)) {
+                            document.getElementById('collectionSearch')?.focus();
+                        } else {
+                            document.getElementById('wishlistSearch')?.focus();
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
