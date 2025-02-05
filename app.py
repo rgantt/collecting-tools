@@ -52,22 +52,29 @@ def get_collection_games(page=1, per_page=30, sort_by='acquisition_date', sort_o
             ),
             games_with_prices AS (
                 SELECT 
+                    p.id as id,
                     p.name as name,
                     p.console as console,
-                    pg.condition as condition,
-                    s.name as source,
+                    COALESCE(w.condition, pg.condition) as condition,
+                    s.name as source_name,
                     CAST(pg.price AS DECIMAL) as purchase_price,
                     CAST(lp.price AS DECIMAL) as current_price,
                     pg.acquisition_date as date,
-                    (CAST(lp.price AS DECIMAL) - CAST(pg.price AS DECIMAL)) as value_change
+                    CASE WHEN w.physical_game IS NOT NULL THEN 1 ELSE 0 END as is_wanted
                 FROM physical_games p
-                JOIN purchased_games pg ON p.id = pg.physical_game
+                LEFT JOIN purchased_games pg ON p.id = pg.physical_game
+                LEFT JOIN wanted_games w ON p.id = w.physical_game
                 LEFT JOIN sources s ON pg.source = s.name
                 LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
                 LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
                 LEFT JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id 
-                    AND LOWER(lp.condition) = LOWER(pg.condition)
+                    AND (
+                        (pg.condition IS NOT NULL AND LOWER(lp.condition) = LOWER(pg.condition))
+                        OR 
+                        (w.condition IS NOT NULL AND LOWER(lp.condition) = LOWER(w.condition))
+                    )
                     AND lp.rn = 1
+                WHERE pg.physical_game IS NOT NULL OR w.physical_game IS NOT NULL
             )
             SELECT *
             FROM games_with_prices
@@ -77,15 +84,17 @@ def get_collection_games(page=1, per_page=30, sort_by='acquisition_date', sort_o
         
         collection_games = []
         for row in cursor.fetchall():
-            name, console, condition, source, purchase_price, current_price, date, _ = row
+            id, name, console, condition, source, purchase_price, current_price, date, is_wanted = row
             collection_games.append({
+                'id': id,
                 'name': name,
                 'console': console,
                 'condition': condition,
-                'source': source,
+                'source': source or None,
                 'purchase_price': float(purchase_price) if purchase_price else None,
                 'current_price': float(current_price) if current_price else None,
-                'date': date
+                'date': date,
+                'is_wanted': bool(is_wanted)
             })
         
         return collection_games
@@ -145,7 +154,7 @@ def get_sort_field(sort_by: str) -> str:
         'name': 'name',
         'console': 'console',
         'condition': 'condition',
-        'source': 'source',
+        'source': 'source_name',
         'purchase_price': 'purchase_price',
         'current_price': 'current_price',
         'value_change': 'value_change',
@@ -197,15 +206,10 @@ def index():
 
 @app.route('/api/collection')
 def get_all_collection_games():
-    sort_by = request.args.get('sort', 'acquisition_date')
-    sort_order = request.args.get('order', 'desc')
-    
-    sort_field = get_sort_field(sort_by)
-    sort_direction = 'DESC' if sort_order == 'desc' else 'ASC'
-    
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute(f"""
+    """Get all games (both purchased and wanted) for client-side operations."""
+    with get_db() as db:
+        cursor = db.cursor()
+        cursor.execute("""
             WITH latest_prices AS (
                 SELECT 
                     pricecharting_id,
@@ -215,38 +219,47 @@ def get_all_collection_games():
                 FROM pricecharting_prices
             )
             SELECT 
+                p.id,
                 p.name,
                 p.console,
-                pg.condition,
-                s.name as source,
-                pg.price as purchase_price,
+                COALESCE(w.condition, pg.condition) as condition,
+                s.name as source_name,
+                CAST(pg.price AS DECIMAL) as purchase_price,
                 CAST(lp.price AS DECIMAL) as current_price,
-                pg.acquisition_date as date
+                pg.acquisition_date as date,
+                CASE WHEN w.physical_game IS NOT NULL THEN 1 ELSE 0 END as is_wanted
             FROM physical_games p
-            JOIN purchased_games pg ON p.id = pg.physical_game
+            LEFT JOIN purchased_games pg ON p.id = pg.physical_game
+            LEFT JOIN wanted_games w ON p.id = w.physical_game
             LEFT JOIN sources s ON pg.source = s.name
             LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
             LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
             LEFT JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id 
-                AND LOWER(lp.condition) = LOWER(pg.condition)
+                AND (
+                    (pg.condition IS NOT NULL AND LOWER(lp.condition) = LOWER(pg.condition))
+                    OR 
+                    (w.condition IS NOT NULL AND LOWER(lp.condition) = LOWER(w.condition))
+                )
                 AND lp.rn = 1
-            ORDER BY {sort_field} {sort_direction}, p.name
+            WHERE pg.physical_game IS NOT NULL OR w.physical_game IS NOT NULL
+            ORDER BY p.name
         """)
         
         games = []
         for row in cursor.fetchall():
-            name, console, condition, source, purchase_price, current_price, date = row
+            id, name, console, condition, source, purchase_price, current_price, date, is_wanted = row
             games.append({
+                'id': id,
                 'name': name,
                 'console': console,
                 'condition': condition,
-                'source': source,
+                'source': source or None,
                 'purchase_price': float(purchase_price) if purchase_price else None,
                 'current_price': float(current_price) if current_price else None,
-                'date': date
+                'date': date,
+                'is_wanted': bool(is_wanted)
             })
         
-        app.logger.info(f'API: Returning {len(games)} collection games')
         return jsonify(games)
 
 @app.route('/api/wishlist')

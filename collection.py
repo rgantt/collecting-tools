@@ -250,6 +250,7 @@ class GameLibrary:
             try:
                 title = input(f'Title{f" [{previous_game[0]}]" if previous_game else ""}: ').strip() or (previous_game[0] if previous_game else "")
                 console = input(f'Console{f" [{previous_game[1]}]" if previous_game else ""}: ').strip() or (previous_game[1] if previous_game else "")
+                condition = input('Condition [complete]: ').strip() or 'complete'
                 
                 if not title or not console:
                     print("Title and console are required")
@@ -280,7 +281,7 @@ class GameLibrary:
 
         try:
             with self._db_connection() as conn:
-                result = add_game_to_wishlist(conn, title, console, id_data)
+                result = add_game_to_wishlist(conn, title, console, id_data, condition)
                 print(result.message)
         except DatabaseError as e:
             print(f"Failed to add game to wishlist: {e}")
@@ -306,23 +307,24 @@ class GameLibrary:
 
                 print(f"\nFound {len(results)} games:\n")
                 for i, result in enumerate(results):
-                    if result.is_wanted:
-                        print(f"[{i}] {result.name} ({result.console}) - WISHLIST")
-                        prices = []
-                        for condition, price in result.current_prices.items():
-                            if price:
-                                prices.append(f"{condition}: ${price:.2f}")
-                        market_prices = " | ".join(prices) if prices else "no current prices"
-                        print(f"    {market_prices}")
+                    # Show status indicator and game name
+                    status = "" if result.is_wanted else ""
+                    print(f"[{i}] {status} {result.name} ({result.console})")
+
+                    # Get current price based on condition
+                    condition = result.condition.lower() if result.condition else 'complete'
+                    current_price = result.current_prices.get(condition)
+                    
+                    # Show current price and value change
+                    if current_price:
+                        print(f"    {condition}: ${current_price:.2f}", end="")
+                        if not result.is_wanted and result.price:
+                            value_change = current_price - float(result.price)
+                            value_change_pct = (value_change / float(result.price)) * 100
+                            print(f" ({value_change_pct:+.1f}%)", end="")
+                        print()
                     else:
-                        purchase_price = f"${float(result.price):.2f}" if result.price else "no price"
-                        current_price = None
-                        if result.condition:
-                            current_price = result.current_prices.get(result.condition.lower())
-                        
-                        market_price = f"{result.condition}: ${current_price:.2f}" if current_price else "no current price"
-                        print(f"[{i}] {result.name} ({result.console})")
-                        print(f"    {market_price} (bought for {purchase_price} from {result.source} on {result.date})")
+                        print("    no current price")
                     print()
 
         except DatabaseError as e:

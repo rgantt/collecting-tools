@@ -55,33 +55,6 @@ CREATE TABLE IF NOT EXISTS pricecharting_prices (
 	FOREIGN KEY (pricecharting_id) REFERENCES pricecharting_games (pricecharting_id)
 );
 
-CREATE VIEW IF NOT EXISTS latest_prices AS
-WITH base_games AS (
-    SELECT g.id, g.name, g.console
-    FROM physical_games g
-    LEFT JOIN purchased_games pg ON g.id = pg.physical_game
-    UNION
-    SELECT g.id, g.name, g.console
-    FROM physical_games g
-    JOIN wanted_games w ON g.id = w.physical_game
-)
-SELECT
-    g.name,
-    g.console,
-    z.pricecharting_id,
-    max(p.retrieve_time) as retrieve_time,
-    p.price,
-    p.condition
-FROM base_games g
-JOIN physical_games_pricecharting_games j
-    ON g.id = j.physical_game
-JOIN pricecharting_games z
-    ON j.pricecharting_game = z.id
-LEFT JOIN pricecharting_prices p
-    ON z.pricecharting_id = p.pricecharting_id
-GROUP BY g.id, p.condition
-ORDER BY g.name ASC;
-
 CREATE TABLE IF NOT EXISTS purchased_games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     physical_game INTEGER NOT NULL,
@@ -99,6 +72,44 @@ CREATE TABLE IF NOT EXISTS wanted_games (
     
     FOREIGN KEY (physical_game) REFERENCES physical_games (id)
 );
+
+-- Add condition column to wanted_games if it doesn't exist
+ALTER TABLE wanted_games ADD COLUMN condition TEXT DEFAULT 'complete';
+
+-- Update existing wishlist items to use 'complete' condition
+UPDATE wanted_games SET condition = 'complete' WHERE condition IS NULL;
+
+CREATE VIEW IF NOT EXISTS latest_prices AS
+WITH base_games AS (
+    SELECT 
+        g.id, 
+        g.name, 
+        g.console,
+        pg.condition as purchased_condition,
+        w.condition as wanted_condition,
+        CASE WHEN w.id IS NOT NULL THEN 1 ELSE 0 END as is_wanted
+    FROM physical_games g
+    LEFT JOIN purchased_games pg ON g.id = pg.physical_game
+    LEFT JOIN wanted_games w ON g.id = w.physical_game
+)
+SELECT
+    g.name,
+    g.console,
+    z.pricecharting_id,
+    max(p.retrieve_time) as retrieve_time,
+    p.price,
+    p.condition,
+    g.is_wanted,
+    COALESCE(g.wanted_condition, g.purchased_condition) as item_condition
+FROM base_games g
+JOIN physical_games_pricecharting_games j
+    ON g.id = j.physical_game
+JOIN pricecharting_games z
+    ON j.pricecharting_game = z.id
+LEFT JOIN pricecharting_prices p
+    ON z.pricecharting_id = p.pricecharting_id
+GROUP BY g.id, p.condition
+ORDER BY g.name ASC;
 
 CREATE VIEW IF NOT EXISTS eligible_price_updates AS
 WITH latest_updates AS (

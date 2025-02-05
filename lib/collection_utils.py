@@ -69,7 +69,7 @@ def search_games(
             p.id,
             p.name,
             p.console,
-            pg.condition,
+            COALESCE(w.condition, pg.condition) as condition,
             pg.source,
             pg.price,
             pg.acquisition_date,
@@ -451,7 +451,8 @@ def add_game_to_wishlist(
     conn: sqlite3.Connection,
     title: str,
     console: str,
-    id_data: Optional[dict] = None
+    id_data: Optional[dict] = None,
+    condition: str = 'complete'
 ) -> GameAdditionResult:
     """Add a game to the wishlist with optional price tracking ID."""
     try:
@@ -467,9 +468,9 @@ def add_game_to_wishlist(
 
         cursor.execute("""
             INSERT INTO wanted_games
-            (physical_game)
-            VALUES (?)
-        """, (physical_id,))
+            (physical_game, condition)
+            VALUES (?, ?)
+        """, (physical_id, condition))
 
         if id_data:
             cursor.execute("""
@@ -570,32 +571,40 @@ def update_wishlist_item(conn: sqlite3.Connection, game_id: int, updates: Dict[s
         game_id: ID of the game to update
         updates: Dictionary of field names and their new values
     """
-    if not updates:
-        return
+    try:
+        cursor = conn.cursor()
         
-    cursor = conn.cursor()
-    
-    # Update physical_games
-    set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
-    values = list(updates.values()) + [game_id]
-    cursor.execute(f"""
-        UPDATE physical_games
-        SET {set_clause}
-        WHERE id = ?
-    """, values)
+        if 'name' in updates or 'console' in updates:
+            # Update physical_games table
+            fields = []
+            values = []
+            
+            if 'name' in updates:
+                fields.append('name = ?')
+                values.append(updates['name'])
+            
+            if 'console' in updates:
+                fields.append('console = ?')
+                values.append(updates['console'])
+            
+            values.append(game_id)  # For WHERE clause
+            
+            cursor.execute(f"""
+                UPDATE physical_games 
+                SET {', '.join(fields)}
+                WHERE id = ?
+            """, values)
 
-    # Update pricecharting_games if name/console changed
-    if 'name' in updates or 'console' in updates:
-        cursor.execute("""
-            UPDATE pricecharting_games
-            SET name = COALESCE(?, name),
-                console = COALESCE(?, console)
-            WHERE id IN (
-                SELECT pricecharting_game
-                FROM physical_games_pricecharting_games
+        if 'condition' in updates:
+            # Update wanted_games table
+            cursor.execute("""
+                UPDATE wanted_games
+                SET condition = ?
                 WHERE physical_game = ?
-            )
-        """, (updates.get('name'), updates.get('console'), game_id))
+            """, (updates['condition'], game_id))
+
+    except sqlite3.Error as e:
+        raise Exception(f"Failed to update wishlist item: {e}")
 
 def remove_from_wishlist(conn: sqlite3.Connection, game_id: int) -> None:
     """Remove a game from the wishlist.

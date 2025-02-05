@@ -39,6 +39,59 @@
         .table th {
             white-space: nowrap;
         }
+        
+        /* Fixed column widths */
+        #collectionTable {
+            table-layout: fixed;
+            width: 100%;
+        }
+        #collectionTable th,
+        #collectionTable td {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #collectionTable th.status-col { 
+            width: 85px;
+            min-width: 85px;
+        }
+        #collectionTable th.name-col { width: 32%; }
+        #collectionTable th.console-col { width: 15%; }
+        #collectionTable th.condition-col { width: 10%; }
+        #collectionTable th.price-col { width: 10%; }
+        #collectionTable th.change-col { width: 15%; }
+        #collectionTable th.date-col { width: 15%; }
+
+        /* Sortable header styles */
+        .sortable {
+            cursor: pointer;
+            position: relative;
+            padding-right: 20px !important;
+        }
+        .sortable::after {
+            content: '⇅';
+            position: absolute;
+            right: 5px;
+            opacity: 0.3;
+        }
+        .sortable.sort-asc::after {
+            content: '↑';
+            opacity: 1;
+        }
+        .sortable.sort-desc::after {
+            content: '↓';
+            opacity: 1;
+        }
+
+        /* Ensure table cells don't wrap and show ellipsis */
+        #collectionTable td {
+            max-width: 0; /* Required for text-overflow to work with table-layout: fixed */
+        }
+        
+        /* Add pointer cursor for cells with tooltips */
+        #collectionTable td[title] {
+            cursor: help;
+        }
     </style>
 </head>
 <body>
@@ -59,39 +112,38 @@
                     <div id="resultCount" class="text-muted mb-2"></div>
                 </div>
                 <div class="table-responsive">
-                    <table class="table" id="collectionTable">
+                    <table class="table table-striped table-hover" id="collectionTable">
                         <thead>
                             <tr>
-                                <th class="sortable" data-sort="name">Game ↕</th>
-                                <th class="sortable" data-sort="console">Console ↕</th>
-                                <th class="sortable" data-sort="condition">Condition ↕</th>
-                                <th class="sortable" data-sort="source">Source ↕</th>
-                                <th class="sortable" data-sort="purchase_price">Purchase Price ↕</th>
-                                <th class="sortable" data-sort="current_price">Current Price ↕</th>
-                                <th class="sortable" data-sort="value_change">Value Change ↕</th>
-                                <th class="sortable" data-sort="date">Added Date ↕</th>
+                                <th class="status-col sortable" data-sort="status">Status</th>
+                                <th class="name-col sortable" data-sort="name">Name</th>
+                                <th class="console-col sortable" data-sort="console">Console</th>
+                                <th class="condition-col sortable" data-sort="condition">Condition</th>
+                                <th class="price-col sortable" data-sort="current_price">Price</th>
+                                <th class="change-col sortable" data-sort="value_change">Value Change</th>
+                                <th class="date-col sortable" data-sort="date">Date</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for game in collection_games %}
                             <tr>
-                                <td>{{ game.name }}</td>
-                                <td>{{ game.console }}</td>
-                                <td>{{ game.condition or '-' }}</td>
-                                <td>{{ game.source or '-' }}</td>
-                                <td>${{ "%.2f"|format(game.purchase_price) if game.purchase_price else '-' }}</td>
-                                <td>${{ "%.2f"|format(game.current_price) if game.current_price else '-' }}</td>
+                                <td>{{ "🔖" if game.is_wanted else "✓" }}</td>
+                                <td title="{{ game.name }}">{{ game.name }}</td>
+                                <td title="{{ game.console }}">{{ game.console }}</td>
+                                <td title="{{ game.condition or '-' }}">{{ game.condition or '-' }}</td>
+                                <td title="{{ "%.2f"|format(game.current_price) if game.current_price else '-' }}">{{ "%.2f"|format(game.current_price) if game.current_price else '-' }}</td>
                                 <td>
-                                    {% if game.current_price and game.purchase_price %}
+                                    {% if not game.is_wanted and game.current_price and game.purchase_price %}
                                         {% set change = game.current_price - game.purchase_price %}
+                                        {% set change_pct = (change / game.purchase_price) * 100 %}
                                         <span class="{{ 'text-success' if change >= 0 else 'text-danger' }}">
-                                            {{ '+' if change >= 0 else '-' }}${{ "%.2f"|format(change|abs) }}
+                                            {{ '%+.1f%%'|format(change_pct) }}
                                         </span>
                                     {% else %}
                                         -
                                     {% endif %}
                                 </td>
-                                <td>{{ game.date }}</td>
+                                <td title="{{ game.date }}">{{ game.date }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -100,96 +152,8 @@
                     <!-- Server-side pagination -->
                     {% if not request.args.get('search') %}
                     <nav id="collectionPagination" aria-label="Collection pagination">
-                        <ul class="pagination">
-                            <li class="page-item {{ 'disabled' if current_page == 1 }}">
-                                <a class="page-link" href="{{ request.args|update_url_params(page=current_page - 1) if current_page > 1 else '#' }}">Previous</a>
-                            </li>
-                            
-                            {# First 4 pages #}
-                            {% for p in range(1, min(5, total_pages + 1)) %}
-                                <li class="page-item {{ 'active' if p == current_page }}">
-                                    <a class="page-link" href="{{ request.args|update_url_params(page=p) }}">{{ p }}</a>
-                                </li>
-                            {% endfor %}
-                            
-                            {# Ellipsis after start if needed #}
-                            {% if current_page - 2 > 4 %}
-                                <li class="page-item disabled">
-                                    <span class="page-link">...</span>
-                                </li>
-                            {% endif %}
-                            
-                            {# Pages around current page #}
-                            {% for p in range(max(5, current_page - 2), min(current_page + 3, total_pages - 3)) %}
-                                {% if p not in range(1, 5) and p not in range(total_pages - 3, total_pages + 1) %}
-                                    <li class="page-item {{ 'active' if p == current_page }}">
-                                        <a class="page-link" href="{{ request.args|update_url_params(page=p) }}">{{ p }}</a>
-                                    </li>
-                                {% endif %}
-                            {% endfor %}
-                            
-                            {# Ellipsis before end if needed #}
-                            {% if current_page + 2 < total_pages - 3 %}
-                                <li class="page-item disabled">
-                                    <span class="page-link">...</span>
-                                </li>
-                            {% endif %}
-                            
-                            {# Last 4 pages #}
-                            {% for p in range(max(total_pages - 3, min(5, total_pages)), total_pages + 1) %}
-                                <li class="page-item {{ 'active' if p == current_page }}">
-                                    <a class="page-link" href="{{ request.args|update_url_params(page=p) }}">{{ p }}</a>
-                                </li>
-                            {% endfor %}
-                            
-                            <li class="page-item {{ 'disabled' if current_page == total_pages }}">
-                                <a class="page-link" href="{{ request.args|update_url_params(page=current_page + 1) if current_page < total_pages else '#' }}">Next</a>
-                            </li>
-                        </ul>
                     </nav>
                     {% endif %}
-                </div>
-                
-                <!-- Pagination -->
-                
-            </div>
-        </div>
-
-        <!-- Wishlist -->
-        <div class="card">
-            <div class="card-header">
-                <h2 class="h4 mb-0">Wishlist</h2>
-            </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <input type="text" 
-                           id="wishlistSearch" 
-                           class="form-control" 
-                           placeholder="Search wishlist...">
-                </div>
-                <div class="table-responsive">
-                    <table class="table" id="wishlistTable">
-                        <thead>
-                            <tr>
-                                <th class="sortable" data-sort="name">Game ↕</th>
-                                <th class="sortable" data-sort="console">Console ↕</th>
-                                <th class="sortable" data-sort="price_complete">Price (Complete) ↕</th>
-                                <th class="sortable" data-sort="price_loose">Price (Loose) ↕</th>
-                                <th class="sortable" data-sort="price_new">Price (New) ↕</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for game in wishlist %}
-                            <tr>
-                                <td>{{ game.name }}</td>
-                                <td>{{ game.console }}</td>
-                                <td>${{ "%.2f"|format(game.price_complete) if game.price_complete else '-' }}</td>
-                                <td>${{ "%.2f"|format(game.price_loose) if game.price_loose else '-' }}</td>
-                                <td>${{ "%.2f"|format(game.price_new) if game.price_new else '-' }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
                 </div>
             </div>
         </div>
@@ -197,136 +161,85 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            let allCollectionGames = [];  // Store all games from API
-            let allWishlistGames = [];    // Store all games from API
-            let filteredCollectionGames = []; // Store filtered games for pagination
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('Initializing collection manager...');
             
-            // Initialize with server-rendered page data
-            let collectionGames = [
-                {% for game in collection_games %}
-                {
-                    name: {{ game.name|tojson }},
-                    console: {{ game.console|tojson }},
-                    condition: {{ game.condition|tojson }},
-                    source: {{ game.source|tojson }},
-                    purchase_price: {{ game.purchase_price|tojson }},
-                    current_price: {{ game.current_price|tojson }},
-                    date: {{ game.date|tojson }}
-                }{% if not loop.last %},{% endif %}
-                {% endfor %}
-            ];
-            
-            let wishlistGames = [
-                {% for game in wishlist %}
-                {
-                    name: {{ game.name|tojson }},
-                    console: {{ game.console|tojson }},
-                    price_complete: {{ game.price_complete|tojson }},
-                    price_loose: {{ game.price_loose|tojson }},
-                    price_new: {{ game.price_new|tojson }}
-                }{% if not loop.last %},{% endif %}
-                {% endfor %}
-            ];
-            
-            // Load all games data
+            // Initialize arrays
+            let allGames = [];
+            let filteredGames = [];
+            const ITEMS_PER_PAGE = 30;
+
+            // Show loading state
+            function showLoading() {
+                const tbody = document.querySelector('#collectionTable tbody');
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">Loading games...</td></tr>';
+                }
+            }
+
+            // Load all games from API
             async function loadAllGames() {
                 try {
-                    console.log('Loading all games data...');
-                    const [collectionResponse, wishlistResponse] = await Promise.all([
-                        fetch('/api/collection'),
-                        fetch('/api/wishlist')
-                    ]);
-                    
-                    if (!collectionResponse.ok) {
-                        throw new Error(`Collection API error: ${collectionResponse.status}`);
+                    showLoading();
+                    console.log('Loading all games from API...');
+                    const response = await fetch('/api/collection');
+                    if (!response.ok) {
+                        throw new Error(`API error: ${response.status}`);
                     }
-                    if (!wishlistResponse.ok) {
-                        throw new Error(`Wishlist API error: ${wishlistResponse.status}`);
-                    }
-                    
-                    allCollectionGames = await collectionResponse.json();
-                    allWishlistGames = await wishlistResponse.json();
-                    
-                    console.log('Loaded all collection games:', allCollectionGames.length);
-                    console.log('Loaded all wishlist games:', allWishlistGames.length);
-                    
-                    // Re-filter with current search terms using full dataset
-                    const collectionSearch = document.getElementById('collectionSearch');
-                    if (collectionSearch && collectionSearch.value) {
-                        const filteredGames = filterGames(allCollectionGames, collectionSearch.value);
-                        console.log('Filtering collection games:', filteredGames.length);
-                        renderCollectionGames(filteredGames);
-                    }
+                    allGames = await response.json();
+                    filteredGames = [...allGames];
+                    console.log('Loaded games from API:', allGames.length);
+                    renderGames(allGames, true, 1);
                 } catch (error) {
                     console.error('Error loading games:', error);
+                    const tbody = document.querySelector('#collectionTable tbody');
+                    if (tbody) {
+                        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading games. Please refresh the page to try again.</td></tr>';
+                    }
                 }
             }
             
-            // Format currency
-            function formatCurrency(value) {
-                if (value === null || value === undefined) return '-';
-                return '$' + value.toFixed(2);
-            }
-            
-            // Format value change
-            function formatValueChange(current, purchase) {
-                if (!current || !purchase) return '-';
-                const change = current - purchase;
-                const formatted = formatCurrency(Math.abs(change));
-                return change >= 0 ? 
-                    `<span class="text-success">+${formatted}</span>` :
-                    `<span class="text-danger">-${formatted}</span>`;
-            }
-            
-            // Generate pagination HTML with ellipses
+            // Generate pagination HTML
             function generatePaginationHTML(currentPage, totalPages) {
-                const maxVisiblePages = 15;
-                const edgePages = 4;  // Number of pages to show at start/end
-                const surroundingPages = 2;  // Number of pages around current
+                if (totalPages <= 1) return ''; // Don't show pagination if only one page
                 
-                let pages = [];
+                let pages = new Set(); // Use Set to avoid duplicates
                 
-                // Always show first edgePages
-                for (let i = 1; i <= Math.min(edgePages, totalPages); i++) {
-                    pages.push(i);
+                // Add first 3 pages
+                for (let i = 1; i <= 3 && i <= totalPages; i++) {
+                    pages.add(i);
                 }
                 
-                // Calculate range around current page
-                let rangeStart = Math.max(edgePages + 1, currentPage - surroundingPages);
-                let rangeEnd = Math.min(totalPages - edgePages, currentPage + surroundingPages);
-                
-                // Add ellipsis after start if there's a gap
-                if (rangeStart > edgePages + 1) {
-                    pages.push('...');
-                }
-                
-                // Add pages around current page
-                for (let i = rangeStart; i <= rangeEnd; i++) {
-                    if (!pages.includes(i)) {
-                        pages.push(i);
+                // Add 2 pages before and after current page
+                for (let i = currentPage - 2; i <= currentPage + 2; i++) {
+                    if (i > 0 && i <= totalPages) {
+                        pages.add(i);
                     }
                 }
                 
-                // Add ellipsis before end if there's a gap
-                if (rangeEnd < totalPages - edgePages) {
-                    pages.push('...');
+                // Add last 3 pages
+                for (let i = Math.max(totalPages - 2, 1); i <= totalPages; i++) {
+                    pages.add(i);
                 }
                 
-                // Always show last edgePages if not already included
-                for (let i = Math.max(totalPages - edgePages + 1, rangeEnd + 1); i <= totalPages; i++) {
-                    if (!pages.includes(i)) {
-                        pages.push(i);
+                // Convert to sorted array
+                let pageArray = Array.from(pages).sort((a, b) => a - b);
+                
+                // Add ellipses where needed
+                let finalPages = [];
+                for (let i = 0; i < pageArray.length; i++) {
+                    if (i > 0 && pageArray[i] > pageArray[i-1] + 1) {
+                        finalPages.push('...');
                     }
+                    finalPages.push(pageArray[i]);
                 }
                 
-                // Generate HTML
                 return `
-                    <ul class="pagination">
+                    <ul class="pagination justify-content-center">
                         <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
                             <a class="page-link" href="#" data-page="${currentPage - 1}">Previous</a>
                         </li>
-                        ${pages.map(page => {
+                        ${finalPages.map(page => {
                             if (page === '...') {
                                 return '<li class="page-item disabled"><span class="page-link">...</span></li>';
                             }
@@ -342,10 +255,45 @@
                     </ul>
                 `;
             }
-
-            // Render collection games with pagination
-            function renderCollectionGames(games, preserveFilteredGames = false) {
-                console.log('Rendering collection games:', games.length);
+            
+            // Format currency
+            function formatCurrency(value) {
+                if (value === null || value === undefined) return '-';
+                return '$' + parseFloat(value).toFixed(2);
+            }
+            
+            // Format value change percentage
+            function formatValueChange(current, purchase) {
+                if (!current || !purchase) return '-';
+                const change = ((current - purchase) / purchase) * 100;
+                const formattedChange = `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`;
+                return change >= 0 ? 
+                    `<span class="text-success">${formattedChange}</span>` :
+                    `<span class="text-danger">${formattedChange}</span>`;
+            }
+            
+            // Filter games
+            function filterGames(games, searchTerm) {
+                console.log('Filtering games with term:', searchTerm);
+                if (!searchTerm) return games;
+                searchTerm = searchTerm.toLowerCase();
+                const filtered = games.filter(game => 
+                    (game.name && game.name.toLowerCase().includes(searchTerm)) ||
+                    (game.console && game.console.toLowerCase().includes(searchTerm))
+                );
+                console.log('Filtered games:', filtered.length);
+                return filtered;
+            }
+            
+            // Get current page of games
+            function getCurrentPageGames(games, page) {
+                const startIndex = (page - 1) * ITEMS_PER_PAGE;
+                return games.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+            }
+            
+            // Render games with pagination
+            function renderGames(games, preserveFilteredGames = false, page = 1) {
+                console.log('Rendering games:', games.length);
                 const tbody = document.querySelector('#collectionTable tbody');
                 const pagination = document.getElementById('collectionPagination');
                 if (!tbody) {
@@ -354,222 +302,174 @@
                 }
 
                 // Store filtered games if this is a new filter operation
-                if (preserveFilteredGames) {
-                    filteredCollectionGames = games;
-                } else {
-                    games = filteredCollectionGames;
+                if (!preserveFilteredGames) {
+                    console.log('Updating filtered games array');
+                    filteredGames = [...games];
                 }
 
-                const isFiltering = document.getElementById('collectionSearch').value;
-                const itemsPerPage = 30;
+                // Calculate pagination
+                const totalPages = Math.ceil(games.length / ITEMS_PER_PAGE);
+                page = Math.max(1, Math.min(page, totalPages)); // Ensure page is valid
                 
-                // Get current page from URL or default to 1
-                const urlParams = new URLSearchParams(window.location.search);
-                let currentPage = parseInt(urlParams.get('page')) || 1;
-
-                // If filtering and more than 30 results, setup client-side pagination
-                if (isFiltering && games.length > itemsPerPage) {
-                    // Calculate total pages
-                    const totalPages = Math.ceil(games.length / itemsPerPage);
+                // Get current page of games
+                const pageGames = getCurrentPageGames(games, page);
+                
+                // Update pagination controls
+                if (pagination) {
+                    pagination.innerHTML = generatePaginationHTML(page, totalPages);
                     
-                    // Ensure current page is valid
-                    currentPage = Math.max(1, Math.min(currentPage, totalPages));
-                    
-                    // Slice games array for current page
-                    const startIndex = (currentPage - 1) * itemsPerPage;
-                    const endIndex = startIndex + itemsPerPage;
-                    const pageGames = games.slice(startIndex, endIndex);
-                    
-                    // Show total results count
-                    const resultCount = document.getElementById('resultCount');
-                    if (resultCount) {
-                        resultCount.textContent = `Showing ${startIndex + 1}-${Math.min(endIndex, games.length)} of ${games.length} results`;
-                    }
-                    
-                    // Render pagination controls
-                    if (pagination) {
-                        pagination.style.display = '';
-                        pagination.innerHTML = generatePaginationHTML(currentPage, totalPages);
-                        
-                        // Add click handlers for pagination
-                        pagination.querySelectorAll('.page-link').forEach(link => {
-                            link.addEventListener('click', (e) => {
-                                e.preventDefault();
-                                const newPage = parseInt(e.target.dataset.page);
-                                if (newPage && newPage !== currentPage && newPage > 0 && newPage <= totalPages) {
-                                    // Update URL without reloading
-                                    const url = new URL(window.location);
-                                    url.searchParams.set('page', newPage);
-                                    window.history.pushState({}, '', url);
-                                    // Re-render with new page
-                                    renderCollectionGames(games);
-                                }
-                            });
+                    // Add click handlers for pagination
+                    pagination.querySelectorAll('.page-link').forEach(link => {
+                        link.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            const newPage = parseInt(e.target.dataset.page);
+                            if (newPage && !isNaN(newPage) && newPage > 0 && newPage <= totalPages) {
+                                renderGames(games, true, newPage);
+                                // Scroll to top of table
+                                document.querySelector('#collectionTable').scrollIntoView({ behavior: 'smooth' });
+                            }
                         });
-                        
-                        // Render the current page of games
-                        games = pageGames;
-                    }
-                } else if (isFiltering) {
-                    // Hide pagination for small filtered result sets
-                    if (pagination) {
-                        pagination.style.display = 'none';
-                    }
-                    // Show all results
-                    games = filteredCollectionGames;
-                    
-                    // Show total results count
-                    const resultCount = document.getElementById('resultCount');
-                    if (resultCount) {
-                        resultCount.textContent = `Showing all ${games.length} results`;
-                    }
-                } else {
-                    // Not filtering - use server-side pagination
-                    if (pagination) {
-                        pagination.style.display = '';
-                    }
+                    });
+                }
+                
+                // Show total results count
+                const resultCount = document.getElementById('resultCount');
+                if (resultCount) {
+                    const startIndex = (page - 1) * ITEMS_PER_PAGE + 1;
+                    const endIndex = Math.min(startIndex + ITEMS_PER_PAGE - 1, games.length);
+                    resultCount.textContent = `Showing ${startIndex}-${endIndex} of ${games.length} results`;
                 }
 
                 // Render the games
-                tbody.innerHTML = games.map(game => `
-                    <tr>
-                        <td>${game.name}</td>
-                        <td>${game.console}</td>
-                        <td>${game.condition || '-'}</td>
-                        <td>${game.source || '-'}</td>
-                        <td>${formatCurrency(game.purchase_price)}</td>
-                        <td>${formatCurrency(game.current_price)}</td>
-                        <td>${formatValueChange(game.current_price, game.purchase_price)}</td>
-                        <td>${game.date}</td>
-                    </tr>
-                `).join('');
-            }
-            
-            // Render wishlist games
-            function renderWishlistGames(games) {
-                console.log('Rendering wishlist games:', games.length);
-                const tbody = document.querySelector('#wishlistTable tbody');
-                if (!tbody) {
-                    console.error('Wishlist table body not found!');
-                    return;
+                if (pageGames.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No games found</td></tr>';
+                } else {
+                    tbody.innerHTML = pageGames.map(game => {
+                        const valueChange = !game.is_wanted ? formatValueChange(game.current_price, game.purchase_price) : '-';
+                        return `
+                            <tr>
+                                <td>${game.is_wanted ? '🔖' : '✓'}</td>
+                                <td title="${game.name}">${game.name}</td>
+                                <td title="${game.console}">${game.console}</td>
+                                <td title="${game.condition || '-'}">${game.condition || '-'}</td>
+                                <td title="${formatCurrency(game.current_price)}">${formatCurrency(game.current_price)}</td>
+                                <td title="${valueChange.replace(/<[^>]*>/g, '')}">${valueChange}</td>
+                                <td title="${game.date || '-'}">${game.date || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
                 }
-                tbody.innerHTML = games.map(game => `
-                    <tr>
-                        <td>${game.name}</td>
-                        <td>${game.console}</td>
-                        <td>${formatCurrency(game.price_complete)}</td>
-                        <td>${formatCurrency(game.price_loose)}</td>
-                        <td>${formatCurrency(game.price_new)}</td>
-                    </tr>
-                `).join('');
-            }
-            
-            // Filter games
-            function filterGames(games, searchTerm) {
-                if (!searchTerm) return games;
-                searchTerm = searchTerm.toLowerCase();
-                console.log('Filtering games with term:', searchTerm);
-                return games.filter(game => {
-                    const matchesName = game.name && game.name.toLowerCase().includes(searchTerm);
-                    const matchesConsole = game.console && game.console.toLowerCase().includes(searchTerm);
-                    return matchesName || matchesConsole;
-                });
             }
             
             // Setup table search functionality
-            function setupTableSearch(searchInputId, renderFunction) {
-                const searchInput = document.getElementById(searchInputId);
-                if (!searchInput) return;
+            function setupTableSearch() {
+                console.log('Setting up table search');
+                const searchInput = document.getElementById('collectionSearch');
+                if (!searchInput) {
+                    console.error('Search input not found!');
+                    return;
+                }
                 
-                searchInput.addEventListener('input', function() {
-                    const searchTerm = this.value;
-                    console.log('Search term:', searchTerm);
-                    
-                    // Use the full dataset from API if available, otherwise use page data
-                    const games = searchInputId === 'collectionSearch' ? 
-                        (allCollectionGames.length > 0 ? allCollectionGames : collectionGames) :
-                        (allWishlistGames.length > 0 ? allWishlistGames : wishlistGames);
-                    
-                    const filteredGames = filterGames(games, searchTerm);
-                    console.log('Filtered games:', filteredGames.length);
-                    
-                    // Reset to page 1 when filtering
-                    const url = new URL(window.location);
-                    url.searchParams.set('page', '1');
-                    window.history.pushState({}, '', url);
-                    
-                    // Render with the new filter, preserving filtered games
-                    renderFunction(filteredGames, true);
+                let debounceTimeout;
+                searchInput.addEventListener('input', (e) => {
+                    console.log('Search input changed:', e.target.value);
+                    clearTimeout(debounceTimeout);
+                    debounceTimeout = setTimeout(() => {
+                        const searchTerm = e.target.value;
+                        console.log('Filtering with term:', searchTerm);
+                        const filtered = filterGames(allGames, searchTerm);
+                        console.log('Found filtered games:', filtered.length);
+                        renderGames(filtered, false, 1); // Reset to first page when filtering
+                    }, 300);
                 });
             }
             
             // Setup sorting functionality
             function setupSorting(tableId, defaultSort = 'name', defaultOrder = 'asc') {
+                console.log('Setting up sorting');
                 const table = document.getElementById(tableId);
-                if (!table) return;
+                if (!table) {
+                    console.error('Table not found:', tableId);
+                    return;
+                }
                 
-                // Get current sort parameters from URL
-                const urlParams = new URLSearchParams(window.location.search);
-                const currentSort = urlParams.get('sort') || defaultSort;
-                const currentOrder = urlParams.get('order') || defaultOrder;
+                let currentSort = defaultSort;
+                let currentOrder = defaultOrder;
                 
-                // Add click handlers to sortable headers
-                table.querySelectorAll('th.sortable').forEach(header => {
-                    const sortField = header.dataset.sort;
+                const headers = table.querySelectorAll('th.sortable');
+                headers.forEach(header => {
+                    const sortKey = header.dataset.sort;
+                    console.log('Setting up sort header:', sortKey);
                     
-                    // Add sort indicators
-                    if (sortField === currentSort) {
-                        header.classList.add('sort-' + currentOrder);
+                    if (sortKey === defaultSort) {
+                        header.classList.add(`sort-${defaultOrder}`);
                     }
                     
                     header.addEventListener('click', () => {
-                        let newOrder = 'asc';
-                        
-                        // If already sorting by this field, toggle order
-                        if (sortField === currentSort) {
-                            newOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+                        console.log('Sort header clicked:', sortKey);
+                        // Update sort direction
+                        if (sortKey === currentSort) {
+                            currentOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+                        } else {
+                            currentSort = sortKey;
+                            currentOrder = 'asc';
                         }
                         
-                        // Update URL and reload
-                        const url = new URL(window.location);
-                        url.searchParams.set('sort', sortField);
-                        url.searchParams.set('order', newOrder);
-                        url.searchParams.set('page', '1');  // Reset to first page when sorting
-                        window.location = url;
+                        console.log('New sort:', currentSort, currentOrder);
+                        
+                        // Update header classes
+                        headers.forEach(h => {
+                            h.classList.remove('sort-asc', 'sort-desc');
+                        });
+                        header.classList.add(`sort-${currentOrder}`);
+                        
+                        // Sort the games
+                        console.log('Sorting games, count:', filteredGames.length);
+                        const sortedGames = [...filteredGames].sort((a, b) => {
+                            let aVal, bVal;
+                            
+                            // Handle special sorting cases
+                            if (sortKey === 'status') {
+                                aVal = a.is_wanted ? '1' : '0'; // Convert to string for consistent sorting
+                                bVal = b.is_wanted ? '1' : '0';
+                            } else if (sortKey === 'value_change' && !a.is_wanted && !b.is_wanted) {
+                                if (!a.current_price || !a.purchase_price) return 1;
+                                if (!b.current_price || !b.purchase_price) return -1;
+                                aVal = ((a.current_price - a.purchase_price) / a.purchase_price) * 100;
+                                bVal = ((b.current_price - b.purchase_price) / b.purchase_price) * 100;
+                            } else if (sortKey === 'current_price') {
+                                aVal = parseFloat(a[sortKey]) || 0;
+                                bVal = parseFloat(b[sortKey]) || 0;
+                            } else {
+                                aVal = a[sortKey];
+                                bVal = b[sortKey];
+                            }
+                            
+                            // Handle null/undefined values
+                            if (aVal === null || aVal === undefined) return 1;
+                            if (bVal === null || bVal === undefined) return -1;
+                            
+                            // Compare values
+                            if (typeof aVal === 'string') {
+                                return currentOrder === 'asc' ? 
+                                    aVal.localeCompare(bVal) : 
+                                    bVal.localeCompare(aVal);
+                            }
+                            return currentOrder === 'asc' ? aVal - bVal : bVal - aVal;
+                        });
+                        
+                        console.log('Sorted games, rendering...');
+                        renderGames(sortedGames, true, 1); // Reset to first page when sorting
                     });
                 });
             }
 
-            // Setup sorting for both tables
-            setupSorting('collectionTable', 'acquisition_date', 'desc');
-            setupSorting('wishlistTable', 'name', 'asc');
-            
-            // Setup search for both tables
-            setupTableSearch('collectionSearch', renderCollectionGames);
-            setupTableSearch('wishlistSearch', renderWishlistGames);
-            
-            // Load all games immediately
-            loadAllGames();
-            
-            // Add keyboard shortcuts
-            document.addEventListener('keydown', function(e) {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-                    e.preventDefault();
-                    // Focus the search input of the table that's more in view
-                    const collectionTable = document.getElementById('collectionTable');
-                    const wishlistTable = document.getElementById('wishlistTable');
-                    const collectionRect = collectionTable?.getBoundingClientRect();
-                    const wishlistRect = wishlistTable?.getBoundingClientRect();
-                    
-                    if (collectionRect && wishlistRect) {
-                        if (Math.abs(collectionRect.top) < Math.abs(wishlistRect.top)) {
-                            document.getElementById('collectionSearch')?.focus();
-                        } else {
-                            document.getElementById('wishlistSearch')?.focus();
-                        }
-                    }
-                }
-            });
+            // Initialize
+            console.log('Starting initialization...');
+            await loadAllGames(); // Load all games first
+            setupTableSearch();
+            setupSorting('collectionTable', 'date', 'desc');
+            console.log('Initialization complete');
         });
     </script>
 </body>
