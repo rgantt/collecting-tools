@@ -45,7 +45,9 @@ def callback():
         session["user"] = token
         return redirect("/")
     except Exception as e:
-        return redirect('/login')
+        print(f"Auth0 callback error: {str(e)}")  # Log the error
+        session.clear()  # Clear any partial session data
+        return f"Error during authentication: {str(e)}", 400  # Return error to user instead of redirecting
 
 @auth_bp.route("/logout")
 def logout():
