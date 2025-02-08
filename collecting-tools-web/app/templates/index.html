@@ -114,18 +114,36 @@
         .game-details dl {
             display: flex;
             flex-wrap: wrap;
-            gap: 1rem;
+            gap: 1.5rem;
             margin: 0;
         }
         
         .game-details dl > div {
-            flex: 1 1 200px;
-            min-width: 0;
+            flex: 0 1 auto;
+            min-width: 140px;
+        }
+        
+        .game-details dt {
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 0.25rem;
+        }
+        
+        .game-details dd {
+            margin: 0;
         }
         
         @media (max-width: 767.98px) {
             .game-details {
                 margin: 0.5rem 0;
+            }
+            
+            .game-details dl {
+                gap: 1rem;
+            }
+            
+            .game-details dl > div {
+                min-width: 120px;
             }
             
             .details-row td {
@@ -146,15 +164,6 @@
         
         .game-row.selected {
             background-color: #f8f9fa;
-        }
-        
-        .game-details dt {
-            font-weight: 600;
-            color: #666;
-        }
-        
-        .game-details dd {
-            margin-bottom: 0;
         }
         
         .full-name {
