@@ -73,7 +73,9 @@ def get_collection_games(page=1, per_page=30, sort_by='acquisition_date', sort_o
                     AND lp.rn = 1
                 WHERE pg.physical_game IS NOT NULL OR w.physical_game IS NOT NULL
             )
-            SELECT *
+            SELECT 
+                id, name, console, condition, source_name, 
+                purchase_price, current_price, date, is_wanted
             FROM games_with_prices
             ORDER BY 
                 CASE WHEN {sort_field} IS NULL THEN 1 ELSE 0 END,
@@ -95,7 +97,7 @@ def get_collection_games(page=1, per_page=30, sort_by='acquisition_date', sort_o
                 'source': source or None,
                 'purchase_price': float(purchase_price) if purchase_price else None,
                 'current_price': float(current_price) if current_price else None,
-                'date': date,
+                'acquisition_date': date,
                 'is_wanted': bool(is_wanted)
             })
         

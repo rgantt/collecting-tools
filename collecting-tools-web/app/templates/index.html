@@ -41,77 +41,193 @@
         }
         
         /* Fixed column widths */
-        #collectionTable {
+        .table {
             table-layout: fixed;
             width: 100%;
         }
-        #collectionTable th,
-        #collectionTable td {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+        
+        /* Mobile-first column widths */
+        .name-col {
+            width: 75%;
         }
-        #collectionTable th.status-col { 
-            width: auto;
-            min-width: 45px;  /* Ensure enough space for the wanted icon (🔖) */
-            padding-right: 20px;  /* Ensure space for sort icon */
-        }
-        #collectionTable td:first-child {
-            text-align: center;
-            overflow: visible;  /* Prevent ellipsis in status column */
-        }
-        #collectionTable th.name-col { width: 32%; }
-        #collectionTable th.console-col { width: 15%; }
-        #collectionTable th.condition-col { width: 10%; }
-        #collectionTable th.price-col { width: 10%; }
-        #collectionTable th.change-col { width: 15%; }
-        #collectionTable th.date-col { width: 15%; }
-
-        /* Sortable header styles */
-        .sortable {
-            cursor: pointer;
-            position: relative;
-            padding-right: 20px !important;
-        }
-        .sortable::after {
-            content: '⇅';
-            position: absolute;
-            right: 5px;
-            opacity: 0.3;
-        }
-        .sortable.sort-asc::after {
-            content: '↑';
-            opacity: 1;
-        }
-        .sortable.sort-desc::after {
-            content: '↓';
-            opacity: 1;
-        }
-
-        /* Ensure table cells don't wrap and show ellipsis */
-        #collectionTable td {
-            max-width: 0; /* Required for text-overflow to work with table-layout: fixed */
+        .console-col {
+            width: 25%;
         }
         
-        /* Add pointer cursor for cells with tooltips */
-        #collectionTable td[title] {
-            cursor: help;
-        }
-
-        /* Mobile-specific styles */
-        @media (max-width: 767px) {
-            #collectionTable th.change-col,
-            #collectionTable th.date-col,
-            #collectionTable td:nth-child(6),
-            #collectionTable td:nth-child(7) {
-                display: none;
+        /* Desktop column widths */
+        @media (min-width: 768px) {
+            .status-col {
+                width: 50px;
             }
-
-            /* Adjust other column widths for mobile */
-            #collectionTable th.name-col { width: 40%; }
-            #collectionTable th.console-col { width: 20%; }
-            #collectionTable th.condition-col { width: 15%; }
-            #collectionTable th.price-col { width: 15%; }
+            .name-col {
+                width: 35%;
+            }
+            .console-col {
+                width: 20%;
+            }
+            .price-col {
+                width: 15%;
+            }
+            .change-col {
+                width: 15%;
+            }
+            .date-col {
+                width: 15%;
+            }
+        }
+        
+        /* Hide columns on mobile */
+        @media (max-width: 767.98px) {
+            .d-none.d-md-table-cell,
+            .date-col {
+                display: none !important;
+            }
+        }
+        
+        /* Ensure content truncates properly */
+        .table td, .table th {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: middle;
+        }
+        
+        /* Expanded content should stretch full width */
+        .expanded-content td {
+            white-space: normal;
+        }
+        
+        .game-details {
+            display: none;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            margin: 0.5rem;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .game-details.show {
+            display: block;
+        }
+        
+        .game-details dl {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin: 0;
+        }
+        
+        .game-details dl > div {
+            flex: 1 1 200px;
+            min-width: 0;
+        }
+        
+        @media (max-width: 767.98px) {
+            .game-details {
+                margin: 0.5rem 0;
+            }
+            
+            .details-row td {
+                padding: 0 !important;
+            }
+            
+            .details-row .game-details {
+                width: 100%;
+                border-left: 0;
+                border-right: 0;
+                border-radius: 0;
+            }
+        }
+        
+        .game-row {
+            cursor: pointer;
+        }
+        
+        .game-row.selected {
+            background-color: #f8f9fa;
+        }
+        
+        .game-details dt {
+            font-weight: 600;
+            color: #666;
+        }
+        
+        .game-details dd {
+            margin-bottom: 0;
+        }
+        
+        .full-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .table td {
+            vertical-align: middle;
+        }
+        
+        .name-col {
+            max-width: 300px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .expanded-content dl {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1rem;
+        }
+        
+        .expanded-content dt {
+            font-weight: 600;
+            color: #666;
+        }
+        
+        .expanded-content dd {
+            margin-bottom: 0;
+        }
+        
+        .full-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .table-container {
+            position: relative;
+        }
+        
+        .game-details {
+            display: none;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .game-details.show {
+            display: block;
+        }
+        
+        .game-row {
+            cursor: pointer;
+        }
+        
+        .game-row.selected {
+            background-color: #f8f9fa;
+        }
+        
+        #gameDetailsContainer {
+            margin-top: 1rem;
         }
     </style>
 </head>
@@ -132,50 +248,28 @@
                            placeholder="Filter games...">
                     <div id="resultCount" class="text-muted mb-2"></div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover" id="collectionTable">
-                        <thead>
-                            <tr>
-                                <th class="status-col sortable" data-sort="status" aria-label="Status"></th>
-                                <th class="name-col sortable" data-sort="name">Name</th>
-                                <th class="console-col sortable" data-sort="console">Console</th>
-                                <th class="condition-col sortable" data-sort="condition">Condition</th>
-                                <th class="price-col sortable" data-sort="current_price">Price</th>
-                                <th class="change-col sortable" data-sort="value_change">Value Change</th>
-                                <th class="date-col sortable" data-sort="date">Date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for game in collection_games %}
-                            <tr>
-                                <td>{{ "🔖" if game.is_wanted else "✓" }}</td>
-                                <td title="{{ game.name }}">{{ game.name }}</td>
-                                <td title="{{ game.console }}">{{ game.console }}</td>
-                                <td title="{{ game.condition or '-' }}">{{ game.condition or '-' }}</td>
-                                <td title="{{ "%.2f"|format(game.current_price) if game.current_price else '-' }}">{{ "%.2f"|format(game.current_price) if game.current_price else '-' }}</td>
-                                <td>
-                                    {% if not game.is_wanted and game.current_price and game.purchase_price %}
-                                        {% set change = game.current_price - game.purchase_price %}
-                                        {% set change_pct = (change / game.purchase_price) * 100 %}
-                                        <span class="{{ 'text-success' if change >= 0 else 'text-danger' }}">
-                                            {{ '%+.1f%%'|format(change_pct) }}
-                                        </span>
-                                    {% else %}
-                                        -
-                                    {% endif %}
-                                </td>
-                                <td title="{{ game.date }}">{{ game.date }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                    
-                    <!-- Server-side pagination -->
-                    {% if not request.args.get('search') %}
-                    <nav id="collectionPagination" aria-label="Collection pagination">
-                    </nav>
-                    {% endif %}
+                <div class="table-container">
+                    <div class="table-responsive">
+                        <table id="collectionTable" class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th class="status-col sortable d-none d-md-table-cell" data-sort="is_wanted" aria-label="Sort by wanted/owned status"></th>
+                                    <th class="name-col sortable" data-sort="name">Name</th>
+                                    <th class="console-col sortable" data-sort="console">Console</th>
+                                    <th class="price-col sortable d-none d-md-table-cell" data-sort="current_price">Price</th>
+                                    <th class="change-col sortable d-none d-md-table-cell" data-sort="value_change">Value Change</th>
+                                    <th class="date-col sortable d-none d-md-table-cell" data-sort="acquisition_date">Added</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
+                
+                <!-- Server-side pagination -->
+                <nav id="collectionPagination" aria-label="Collection pagination">
+                </nav>
             </div>
         </div>
     </div>
@@ -194,7 +288,7 @@
             function showLoading() {
                 const tbody = document.querySelector('#collectionTable tbody');
                 if (tbody) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">Loading games...</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">Loading games...</td></tr>';
                 }
             }
 
@@ -215,7 +309,7 @@
                     console.error('Error loading games:', error);
                     const tbody = document.querySelector('#collectionTable tbody');
                     if (tbody) {
-                        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading games. Please refresh the page to try again.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error loading games. Please refresh the page to try again.</td></tr>';
                     }
                 }
             }
@@ -280,11 +374,11 @@
             // Format value change percentage
             function formatValueChange(current, purchase) {
                 if (!current || !purchase) return '-';
-                const change = ((current - purchase) / purchase) * 100;
-                const formattedChange = `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`;
-                return change >= 0 ? 
-                    `<span class="text-success">${formattedChange}</span>` :
-                    `<span class="text-danger">${formattedChange}</span>`;
+                const change = current - purchase;
+                const changePct = (change / purchase) * 100;
+                const sign = changePct >= 0 ? '+' : '';
+                const cssClass = changePct >= 0 ? 'text-success' : 'text-danger';
+                return `<span class="${cssClass}">${sign}${changePct.toFixed(1)}%</span>`;
             }
             
             // Filter games
@@ -310,7 +404,6 @@
             function renderGames(games, preserveFilteredGames = false, page = 1) {
                 console.log('Rendering games:', games.length);
                 const tbody = document.querySelector('#collectionTable tbody');
-                const pagination = document.getElementById('collectionPagination');
                 if (!tbody) {
                     console.error('Collection table body not found!');
                     return;
@@ -323,13 +416,108 @@
                 }
 
                 // Calculate pagination
-                const totalPages = Math.ceil(games.length / ITEMS_PER_PAGE);
-                page = Math.max(1, Math.min(page, totalPages)); // Ensure page is valid
+                const itemsPerPage = 30;
+                const totalPages = Math.ceil(games.length / itemsPerPage);
+                const startIndex = (page - 1) * itemsPerPage;
+                const endIndex = Math.min(startIndex + itemsPerPage, games.length);
+                const pageGames = games.slice(startIndex, endIndex);
                 
-                // Get current page of games
-                const pageGames = getCurrentPageGames(games, page);
+                // Update result count
+                const resultCount = document.getElementById('resultCount');
+                if (resultCount) {
+                    resultCount.textContent = `Showing ${startIndex + 1}-${endIndex} of ${games.length} results`;
+                }
+
+                if (!games || games.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No games found</td></tr>';
+                    return;
+                }
                 
-                // Update pagination controls
+                // Clear any existing event listeners
+                const oldRows = document.querySelectorAll('.game-row');
+                oldRows.forEach(row => {
+                    row.replaceWith(row.cloneNode(true));
+                });
+                
+                // Render table rows with details rows
+                tbody.innerHTML = pageGames.map(game => {
+                    const valueChange = !game.is_wanted ? formatValueChange(game.current_price, game.purchase_price) : '-';
+                    const statusIcon = game.is_wanted ? '🔖' : '✓';
+                    const status = game.is_wanted ? 'Wanted' : 'Purchased';
+                    
+                    return `
+                        <tr class="game-row" data-game-id="${game.id}">
+                            <td class="status-col d-none d-md-table-cell">${statusIcon}</td>
+                            <td title="${game.name}">${game.name}</td>
+                            <td title="${game.console}">${game.console}</td>
+                            <td class="d-none d-md-table-cell" title="${formatCurrency(game.current_price)}">${formatCurrency(game.current_price)}</td>
+                            <td class="d-none d-md-table-cell">${valueChange}</td>
+                            <td class="d-none d-md-table-cell" title="${game.acquisition_date || '-'}">${game.acquisition_date || '-'}</td>
+                        </tr>
+                        <tr class="details-row">
+                            <td colspan="6" class="p-0">
+                                <div class="game-details" data-game-id="${game.id}">
+                                    <div class="full-name">${game.name}</div>
+                                    <dl>
+                                        <div>
+                                            <dt>Status</dt>
+                                            <dd>${status}</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Console</dt>
+                                            <dd>${game.console}</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Condition</dt>
+                                            <dd>${game.condition || '-'}</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Purchase Price</dt>
+                                            <dd>${formatCurrency(game.purchase_price)}</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Current Price</dt>
+                                            <dd>${formatCurrency(game.current_price)}</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Value Change</dt>
+                                            <dd>${valueChange}</dd>
+                                        </div>
+                                        <div>
+                                            <dt>Acquisition Date</dt>
+                                            <dd>${game.acquisition_date || '-'}</dd>
+                                        </div>
+                                    </dl>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+                
+                // Add click handlers
+                document.querySelectorAll('.game-row').forEach(row => {
+                    row.addEventListener('click', function(e) {
+                        const gameId = this.dataset.gameId;
+                        const detailsDiv = document.querySelector(`.game-details[data-game-id="${gameId}"]`);
+                        
+                        if (!detailsDiv) return;
+                        
+                        const wasVisible = detailsDiv.classList.contains('show');
+                        
+                        // Hide all details and remove selected state
+                        document.querySelectorAll('.game-details').forEach(div => div.classList.remove('show'));
+                        document.querySelectorAll('.game-row').forEach(r => r.classList.remove('selected'));
+                        
+                        // Show this one if it wasn't visible
+                        if (!wasVisible) {
+                            detailsDiv.classList.add('show');
+                            this.classList.add('selected');
+                        }
+                    });
+                });
+                
+                // Update pagination UI
+                const pagination = document.getElementById('collectionPagination');
                 if (pagination) {
                     pagination.innerHTML = generatePaginationHTML(page, totalPages);
                     
@@ -338,80 +526,53 @@
                         link.addEventListener('click', (e) => {
                             e.preventDefault();
                             const newPage = parseInt(e.target.dataset.page);
-                            if (newPage && !isNaN(newPage) && newPage > 0 && newPage <= totalPages) {
+                            if (!isNaN(newPage)) {
                                 renderGames(games, true, newPage);
-                                // Scroll to top of table
-                                document.querySelector('#collectionTable').scrollIntoView({ behavior: 'smooth' });
                             }
                         });
                     });
-                }
-                
-                // Show total results count
-                const resultCount = document.getElementById('resultCount');
-                if (resultCount) {
-                    const startIndex = (page - 1) * ITEMS_PER_PAGE + 1;
-                    const endIndex = Math.min(startIndex + ITEMS_PER_PAGE - 1, games.length);
-                    resultCount.textContent = `Showing ${startIndex}-${endIndex} of ${games.length} results`;
-                }
-
-                // Render the games
-                if (pageGames.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No games found</td></tr>';
-                } else {
-                    tbody.innerHTML = pageGames.map(game => {
-                        const valueChange = !game.is_wanted ? formatValueChange(game.current_price, game.purchase_price) : '-';
-                        return `
-                            <tr>
-                                <td>${game.is_wanted ? '🔖' : '✓'}</td>
-                                <td title="${game.name}">${game.name}</td>
-                                <td title="${game.console}">${game.console}</td>
-                                <td title="${game.condition || '-'}">${game.condition || '-'}</td>
-                                <td title="${formatCurrency(game.current_price)}">${formatCurrency(game.current_price)}</td>
-                                <td title="${valueChange.replace(/<[^>]*>/g, '')}">${valueChange}</td>
-                                <td title="${game.date || '-'}">${game.date || '-'}</td>
-                            </tr>
-                        `;
-                    }).join('');
                 }
             }
             
             // Sort games by a specific key
             function sortGames(games, sortKey, sortOrder) {
+                console.log(`Sorting games by ${sortKey} in ${sortOrder} order`);
                 return [...games].sort((a, b) => {
                     let aVal, bVal;
                     
-                    // Handle special sorting cases
-                    if (sortKey === 'status') {
-                        aVal = a.is_wanted ? '1' : '0';
-                        bVal = b.is_wanted ? '1' : '0';
-                    } else if (sortKey === 'value_change' && !a.is_wanted && !b.is_wanted) {
-                        if (!a.current_price || !a.purchase_price) return 1;
-                        if (!b.current_price || !b.purchase_price) return -1;
-                        aVal = ((a.current_price - a.purchase_price) / a.purchase_price) * 100;
-                        bVal = ((b.current_price - b.purchase_price) / b.purchase_price) * 100;
+                    if (sortKey === 'is_wanted') {
+                        aVal = a[sortKey] ? 1 : 0;
+                        bVal = b[sortKey] ? 1 : 0;
                     } else if (sortKey === 'current_price') {
                         aVal = parseFloat(a[sortKey]) || 0;
                         bVal = parseFloat(b[sortKey]) || 0;
-                    } else if (sortKey === 'date') {
-                        aVal = new Date(a[sortKey]);
-                        bVal = new Date(b[sortKey]);
+                    } else if (sortKey === 'value_change') {
+                        // Calculate value change percentage for sorting
+                        const aChange = !a.is_wanted && a.current_price && a.purchase_price ? 
+                            ((a.current_price - a.purchase_price) / a.purchase_price) * 100 : -Infinity;
+                        const bChange = !b.is_wanted && b.current_price && b.purchase_price ? 
+                            ((b.current_price - b.purchase_price) / b.purchase_price) * 100 : -Infinity;
+                        
+                        aVal = aChange;
+                        bVal = bChange;
+                    } else if (sortKey === 'acquisition_date') {
+                        aVal = a[sortKey] ? new Date(a[sortKey]).getTime() : 0;
+                        bVal = b[sortKey] ? new Date(b[sortKey]).getTime() : 0;
                     } else {
                         aVal = a[sortKey];
                         bVal = b[sortKey];
                     }
                     
-                    // Handle null/undefined values
-                    if (aVal === null || aVal === undefined) return 1;
-                    if (bVal === null || bVal === undefined) return -1;
-                    
-                    // Compare values
-                    if (typeof aVal === 'string') {
-                        return sortOrder === 'asc' ? 
-                            aVal.localeCompare(bVal) : 
-                            bVal.localeCompare(aVal);
+                    // Handle null values for non-value_change fields
+                    if (sortKey !== 'value_change') {
+                        if (aVal === null || aVal === undefined) aVal = sortOrder === 'asc' ? '\uffff' : '';
+                        if (bVal === null || bVal === undefined) bVal = sortOrder === 'asc' ? '\uffff' : '';
                     }
-                    return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+                    
+                    // Compare the values
+                    if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+                    return 0;
                 });
             }
 
@@ -491,7 +652,7 @@
             console.log('Starting initialization...');
             await loadAllGames(); // Load all games first
             setupTableSearch();
-            const { currentSort, currentOrder } = setupSorting('collectionTable', 'date', 'desc');
+            const { currentSort, currentOrder } = setupSorting('collectionTable', 'acquisition_date', 'desc');
             // Apply initial sort
             const initialSortedGames = sortGames(filteredGames, currentSort, currentOrder);
             renderGames(initialSortedGames, true, 1);
