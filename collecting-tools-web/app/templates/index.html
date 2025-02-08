@@ -226,21 +226,15 @@
                 
                 let pages = new Set(); // Use Set to avoid duplicates
                 
-                // Add first 3 pages
-                for (let i = 1; i <= 3 && i <= totalPages; i++) {
-                    pages.add(i);
-                }
+                // Always add first and last pages
+                pages.add(1);
+                pages.add(totalPages);
                 
-                // Add 2 pages before and after current page
-                for (let i = currentPage - 2; i <= currentPage + 2; i++) {
-                    if (i > 0 && i <= totalPages) {
+                // Add current page and one page on either side
+                for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+                    if (i > 1 && i < totalPages) {  // Don't add first/last pages again
                         pages.add(i);
                     }
-                }
-                
-                // Add last 3 pages
-                for (let i = Math.max(totalPages - 2, 1); i <= totalPages; i++) {
-                    pages.add(i);
                 }
                 
                 // Convert to sorted array
