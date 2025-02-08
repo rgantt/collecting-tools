@@ -176,7 +176,7 @@ def get_wishlist_sort_field(sort_by: str) -> str:
     return valid_sort_fields.get(sort_by, 'p.name')
 
 @main.route('/')
-#@requires_auth
+@requires_auth
 def index():
     page = request.args.get('page', 1, type=int)
     per_page = 30
@@ -209,7 +209,7 @@ def index():
                          wishlist_order=wishlist_order)
 
 @main.route('/api/collection')
-#@requires_auth
+@requires_auth
 def get_all_collection_games():
     """Get all games for client-side operations."""
     # Use existing function but get all games without pagination
