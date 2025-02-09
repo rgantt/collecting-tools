@@ -400,6 +400,10 @@ class GameLibrary:
                     if console:
                         updates['console'] = console
 
+                    condition = input(f'Condition [{selected_game.condition}]: ').strip().lower()
+                    if condition:
+                        updates['condition'] = condition
+
                     if not updates:
                         print("No changes made")
                         return
