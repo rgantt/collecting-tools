@@ -507,6 +507,7 @@ class WishlistItem:
     id: int
     name: str
     console: str
+    condition: str
     pricecharting_id: Optional[str]
     price_complete: Optional[float]
     price_loose: Optional[float]
@@ -529,6 +530,7 @@ def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = No
             p.id,
             p.name,
             p.console,
+            w.condition,
             pc.pricecharting_id,
             MAX(CASE WHEN lp.condition = 'complete' THEN lp.price END) as price_complete,
             MAX(CASE WHEN lp.condition = 'loose' THEN lp.price END) as price_loose,
@@ -537,7 +539,14 @@ def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = No
         JOIN wanted_games w ON p.id = w.physical_game
         LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
         LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
-        LEFT JOIN latest_prices lp ON pc.pricecharting_id = lp.pricecharting_id
+        LEFT JOIN (
+            SELECT 
+                pricecharting_id,
+                condition,
+                price,
+                ROW_NUMBER() OVER (PARTITION BY pricecharting_id, condition ORDER BY retrieve_time DESC) as rn
+            FROM pricecharting_prices
+        ) lp ON pc.pricecharting_id = lp.pricecharting_id AND lp.rn = 1
         WHERE 1=1
     """
     
@@ -546,7 +555,7 @@ def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = No
         query += " AND (LOWER(p.name) LIKE LOWER(?) OR LOWER(p.console) LIKE LOWER(?))"
         params = [f'%{search_term}%', f'%{search_term}%']
     
-    query += " GROUP BY p.id, p.name, p.console, pc.pricecharting_id ORDER BY p.name ASC"
+    query += " GROUP BY p.id, p.name, p.console, w.condition, pc.pricecharting_id ORDER BY p.name ASC"
     
     cursor.execute(query, params)
     rows = cursor.fetchall()
@@ -556,10 +565,11 @@ def get_wishlist_items(conn: sqlite3.Connection, search_term: Optional[str] = No
             id=row[0],
             name=row[1],
             console=row[2],
-            pricecharting_id=str(row[3]) if row[3] is not None else None,
-            price_complete=row[4],
-            price_loose=row[5],
-            price_new=row[6]
+            condition=row[3],
+            pricecharting_id=str(row[4]) if row[4] is not None else None,
+            price_complete=row[5],
+            price_loose=row[6],
+            price_new=row[7]
         ) for row in rows
     ]
 

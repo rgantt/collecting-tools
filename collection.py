@@ -327,6 +327,93 @@ class GameLibrary:
                         print("    no current price")
                     print()
 
+                # Add interactive selection
+                try:
+                    selection = input("\nSelect a game by number or press Enter to cancel: ").strip()
+                    if selection:
+                        try:
+                            index = int(selection)
+                            if 0 <= index < len(results):
+                                selected_game = results[index]
+                                while True:
+                                    print("\nOptions:")
+                                    print("1. Delete game")
+                                    print("2. Update game")
+                                    print("3. Cancel")
+                                    
+                                    choice = input("\nChoose an option (1-3): ").strip()
+                                    
+                                    if choice == "1":
+                                        confirm = input("Are you sure you want to delete this game? (y/N): ").strip().lower()
+                                        if confirm == 'y':
+                                            cursor = conn.cursor()
+                                            # Delete from purchased_games or wanted_games first
+                                            if selected_game.is_wanted:
+                                                cursor.execute("DELETE FROM wanted_games WHERE physical_game = ?", (selected_game.id,))
+                                            else:
+                                                cursor.execute("DELETE FROM purchased_games WHERE physical_game = ?", (selected_game.id,))
+                                            
+                                            # Delete from physical_games_pricecharting_games if exists
+                                            cursor.execute("DELETE FROM physical_games_pricecharting_games WHERE physical_game = ?", (selected_game.id,))
+                                            
+                                            # Finally delete from physical_games
+                                            cursor.execute("DELETE FROM physical_games WHERE id = ?", (selected_game.id,))
+                                            
+                                            print("Game deleted.")
+                                        break
+                                    elif choice == "2":
+                                        if selected_game.is_wanted:
+                                            # Handle wishlist item updates
+                                            print("\nEnter new values (or press Enter to keep current value)")
+                                            try:
+                                                updates = {}
+                                                
+                                                name = input(f'Name [{selected_game.name}]: ').strip()
+                                                if name:
+                                                    updates['name'] = name
+                                                
+                                                console = input(f'Console [{selected_game.console}]: ').strip()
+                                                if console:
+                                                    updates['console'] = console
+
+                                                if not updates:
+                                                    print("No changes made")
+                                                else:
+                                                    update_wishlist_item(conn, selected_game.id, updates)
+                                                    print("Changes saved")
+                                            except (ValueError, EOFError):
+                                                print("\nEdit cancelled")
+                                        else:
+                                            # Handle purchased game updates
+                                            try:
+                                                condition = input(f"Condition [{selected_game.condition or ''}]: ").strip() or selected_game.condition
+                                                source = input(f"Source [{selected_game.source or ''}]: ").strip() or selected_game.source
+                                                price = input(f"Price [{selected_game.price or ''}]: ").strip() or selected_game.price
+                                                date = self._get_valid_date("Date", selected_game.date)
+
+                                                cursor = conn.cursor()
+                                                cursor.execute("""
+                                                    UPDATE purchased_games
+                                                    SET condition = ?, source = ?, price = ?, acquisition_date = ?
+                                                    WHERE physical_game = ?
+                                                """, (condition, source, price, date, selected_game.id))
+                                                
+                                                print("Game updated successfully.")
+                                            except EOFError:
+                                                print("\nUpdate cancelled")
+                                        break
+                                    elif choice == "3":
+                                        break
+                                    else:
+                                        print("Invalid choice. Please try again.")
+                            else:
+                                print("Invalid selection.")
+                        except ValueError:
+                            print("Invalid input. Please enter a number.")
+                except EOFError:
+                    print("\nOperation cancelled")
+                    return
+
         except DatabaseError as e:
             print(f"Search failed: {e}")
 
