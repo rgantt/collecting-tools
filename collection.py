@@ -18,6 +18,7 @@ from lib.collection_utils import (
     get_recent_additions, add_game_to_database, add_game_to_wishlist, get_wishlist_items,
     remove_from_wishlist, update_wishlist_item
 )
+import boto3
 
 class GameLibraryError(Exception):
     """Base exception for GameLibrary errors."""
@@ -102,6 +103,7 @@ class GameLibrary:
         self.register("value", "Display collection value statistics", self.display_value_stats)
         self.register("distribution", "Display collection distribution by console", self.display_distribution)
         self.register("recent", "Display recently added games", self.display_recent)
+        self.register("publish", "Publish database to S3", self.publish_to_s3)
         self.register("help", "Display available commands", self.display_commands)
 
     def register(self, command: str, description: str, func: Callable[[], None]):
@@ -634,6 +636,20 @@ class GameLibrary:
 
         except DatabaseError as e:
             print(f"Failed to retrieve recent additions: {e}")
+
+    def publish_to_s3(self) -> None:
+        """Publish the SQLite database to S3."""
+        try:
+            s3 = boto3.client('s3')
+            bucket = "collecting-tools-gantt-pub"
+            key = "games.db"
+            
+            print(f"Publishing database to s3://{bucket}/{key}...")
+            s3.upload_file(str(self.db_path), bucket, key)
+            print("Database published successfully!")
+            
+        except Exception as e:
+            raise DatabaseError(f"Failed to publish database to S3: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description='Manage your game collection')
