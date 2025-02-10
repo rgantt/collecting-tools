@@ -467,40 +467,49 @@ class GameLibrary:
                 # Get the selected game
                 selected_game = games[choice]
                 
-                # Offer to remove from wishlist
-                remove = input('Remove from wishlist? (default: No) [y/N]: ').strip().lower()
-                if remove == 'y':
-                    remove_from_wishlist(conn, selected_game.id)
-                    print("Game removed from wishlist")
-                    return
-
-                print("\nEnter new values (or press Enter to keep current value)")
-                
-                try:
-                    updates = {}
+                while True:
+                    print("\nOptions:")
+                    print("1. Delete game")
+                    print("2. Update game")
+                    print("3. Cancel")
                     
-                    name = input(f'Name [{selected_game.name}]: ').strip()
-                    if name:
-                        updates['name'] = name
+                    choice = input("\nChoose an option (1-3): ").strip()
                     
-                    console = input(f'Console [{selected_game.console}]: ').strip()
-                    if console:
-                        updates['console'] = console
+                    if choice == "1":
+                        confirm = input("Are you sure you want to delete this game? (y/N): ").strip().lower()
+                        if confirm == 'y':
+                            remove_from_wishlist(conn, selected_game.id)
+                            print("Game removed from wishlist")
+                        break
+                    elif choice == "2":
+                        print("\nEnter new values (or press Enter to keep current value)")
+                        try:
+                            updates = {}
+                            
+                            name = input(f'Name [{selected_game.name}]: ').strip()
+                            if name:
+                                updates['name'] = name
+                            
+                            console = input(f'Console [{selected_game.console}]: ').strip()
+                            if console:
+                                updates['console'] = console
 
-                    condition = input(f'Condition [{selected_game.condition}]: ').strip().lower()
-                    if condition:
-                        updates['condition'] = condition
+                            condition = input(f'Condition [{selected_game.condition}]: ').strip().lower()
+                            if condition:
+                                updates['condition'] = condition
 
-                    if not updates:
-                        print("No changes made")
-                        return
-
-                    update_wishlist_item(conn, selected_game.id, updates)
-                    print("Changes saved")
-
-                except (ValueError, EOFError):
-                    print("\nEdit cancelled")
-                    return
+                            if not updates:
+                                print("No changes made")
+                            else:
+                                update_wishlist_item(conn, selected_game.id, updates)
+                                print("Changes saved")
+                        except (ValueError, EOFError):
+                            print("\nEdit cancelled")
+                        break
+                    elif choice == "3":
+                        break
+                    else:
+                        print("Invalid choice")
 
         except DatabaseError as e:
             print(f"Failed to retrieve wishlist: {e}")
