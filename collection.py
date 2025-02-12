@@ -388,12 +388,22 @@ class GameLibrary:
                                         else:
                                             # Handle purchased game updates
                                             try:
+                                                name = input(f"Name [{selected_game.name}]: ").strip() or selected_game.name
+                                                console = input(f"Console [{selected_game.console}]: ").strip() or selected_game.console
                                                 condition = input(f"Condition [{selected_game.condition or ''}]: ").strip() or selected_game.condition
                                                 source = input(f"Source [{selected_game.source or ''}]: ").strip() or selected_game.source
                                                 price = input(f"Price [{selected_game.price or ''}]: ").strip() or selected_game.price
                                                 date = self._get_valid_date("Date", selected_game.date)
 
                                                 cursor = conn.cursor()
+                                                # Update physical_games table
+                                                cursor.execute("""
+                                                    UPDATE physical_games
+                                                    SET name = ?, console = ?
+                                                    WHERE id = ?
+                                                """, (name, console, selected_game.id))
+
+                                                # Update purchased_games table
                                                 cursor.execute("""
                                                     UPDATE purchased_games
                                                     SET condition = ?, source = ?, price = ?, acquisition_date = ?

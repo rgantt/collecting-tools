@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS purchased_games (
 CREATE TABLE IF NOT EXISTS wanted_games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     physical_game INTEGER NOT NULL,
-    condition TEXT DEFAULT 'complete'
+    condition TEXT DEFAULT 'complete',
     
     FOREIGN KEY (physical_game) REFERENCES physical_games (id)
 );

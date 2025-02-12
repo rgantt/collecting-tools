@@ -478,7 +478,9 @@ def test_wishlist_view_and_edit(initialized_library, monkeypatch):
             return 'mario'
         elif 'Select a game to edit' in prompt:
             return '1'
-        elif 'Remove from wishlist?' in prompt:
+        elif 'Choose an option (1-3)' in prompt:
+            return '1'  # Choose delete option
+        elif 'Are you sure you want to delete this game?' in prompt:
             return 'y'
         return ''
 
@@ -619,3 +621,49 @@ def test_recent_additions_with_prices(db_connection):
     wishlist_items = [item for item in recent if item.is_wanted]
     assert len(wishlist_items) >= 1
     assert any(item.name == "Persona 3 Reload" and item.console == "PS5" for item in wishlist_items)
+
+def test_end_to_end_game_management(initialized_library, monkeypatch):
+    """Test end-to-end flow of adding, searching, and editing a game in the collection."""
+    # Mock user inputs for adding a game
+    add_inputs = iter([
+        "The Legend of Zelda: Tears of the Kingdom",  # title
+        "Switch",     # console
+        "new",       # condition
+        "GameStop",   # source
+        "69.99",     # price
+        "2025-02-11", # date
+        "c"          # choice to continue without price tracking
+    ])
+    monkeypatch.setattr('builtins.input', lambda _: next(add_inputs))
+
+    # Add the game
+    initialized_library.add_game()
+
+    # Mock user inputs for searching and editing the game
+    search_edit_inputs = iter([
+        "Tears of the Kingdom",  # search term
+        "0",                     # select first game
+        "2",                     # choose update option
+        "Zelda: Tears of the Kingdom",  # updated name
+        "Switch",                # keep same console
+        "used",                  # new condition
+        "GameStop",              # keep same source
+        "54.99",                # new price
+        "2025-02-11",           # keep same date
+    ])
+    monkeypatch.setattr('builtins.input', lambda _: next(search_edit_inputs))
+
+    # Search and edit the game
+    initialized_library.search_library()
+
+    # Verify the changes
+    with initialized_library._db_connection() as conn:
+        results = search_games(conn, "Tears of the Kingdom")
+        assert len(results) == 1
+        updated_game = results[0]
+        assert updated_game.name == "Zelda: Tears of the Kingdom"  # Verify name change
+        assert updated_game.condition == "used"
+        assert float(updated_game.price) == 54.99
+        assert updated_game.console == "Switch"
+        assert updated_game.source == "GameStop"
+        assert updated_game.date == "2025-02-11"
