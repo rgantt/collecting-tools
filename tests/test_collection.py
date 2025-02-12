@@ -667,3 +667,65 @@ def test_end_to_end_game_management(initialized_library, monkeypatch):
         assert updated_game.console == "Switch"
         assert updated_game.source == "GameStop"
         assert updated_game.date == "2025-02-11"
+
+def test_end_to_end_game_with_prices(initialized_library, monkeypatch):
+    """Test end-to-end flow of adding a game with price information and finding it in search results."""
+    # Mock user inputs for adding a game
+    inputs = iter([
+        "Super Mario 64",  # title
+        "Nintendo 64",     # console
+        "Good",           # condition
+        "Local Store",    # source
+        "39.99",         # price
+        "2025-02-11",    # date (using current date)
+        ""               # empty input to finish
+    ])
+    monkeypatch.setattr('builtins.input', lambda _: next(inputs))
+
+    # Add a game with price tracking information
+    with initialized_library._db_connection() as conn:
+        game = GameData(
+            title="Super Mario 64",
+            console="Nintendo 64",
+            condition="Good",
+            source="Local Store",
+            price="39.99",
+            date="2025-02-11"
+        )
+        
+        # Add game with price tracking ID
+        id_data = {
+            "name": "Super Mario 64",
+            "console": "Nintendo 64",
+            "pricecharting_id": "SM64-N64"
+        }
+        result = add_game_to_database(conn, game, id_data)
+        assert result.success
+        
+        # Add a price record for the game
+        price_data = {
+            'game': 'SM64-N64',
+            'time': '2025-02-11T00:00:00',
+            'prices': {
+                'loose': 39.99,
+                'complete': 79.99,
+                'new': 299.99
+            }
+        }
+        insert_price_records([price_data], conn)
+        
+        # Search for the game
+        search_results = search_games(conn, "Mario 64")
+        
+        # Verify game appears in search results with price information
+        assert len(search_results) > 0
+        found_game = next((game for game in search_results if game.name == "Super Mario 64"), None)
+        assert found_game is not None
+        assert found_game.name == "Super Mario 64"
+        assert found_game.console == "Nintendo 64"
+        assert found_game.condition == "Good"
+        assert float(found_game.price) == 39.99
+        assert found_game.current_prices is not None
+        assert found_game.current_prices.get('loose') == 39.99
+        assert found_game.current_prices.get('complete') == 79.99
+        assert found_game.current_prices.get('new') == 299.99

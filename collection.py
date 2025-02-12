@@ -310,8 +310,8 @@ class GameLibrary:
                 print(f"\nFound {len(results)} games:\n")
                 for i, result in enumerate(results):
                     # Show status indicator and game name
-                    status = "" if result.is_wanted else ""
-                    print(f"[{i}] {status} {result.name} ({result.console})")
+                    status = "🔖 " if result.is_wanted else "   "
+                    print(f"[{i}] {status}{result.name} ({result.console})")
 
                     # Get current price based on condition
                     condition = result.condition.lower() if result.condition else 'complete'

@@ -66,6 +66,17 @@ CREATE TABLE IF NOT EXISTS purchased_games (
     FOREIGN KEY (physical_game) REFERENCES physical_games (id)
 );
 
+CREATE TABLE IF NOT EXISTS lent_games (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    purchased_game INTEGER NOT NULL,
+    lent_date DATE NOT NULL CHECK (lent_date IS strftime('%Y-%m-%d', lent_date)),
+    lent_to TEXT NOT NULL,
+    note TEXT,
+    returned_date DATE CHECK (returned_date IS NULL OR returned_date IS strftime('%Y-%m-%d', returned_date)),
+    
+    FOREIGN KEY (purchased_game) REFERENCES purchased_games (id)
+);
+
 CREATE TABLE IF NOT EXISTS wanted_games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     physical_game INTEGER NOT NULL,
