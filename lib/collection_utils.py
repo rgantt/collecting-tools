@@ -14,6 +14,9 @@ class SearchResult:
     pricecharting_id: Optional[str]
     current_prices: Dict[str, float]
     is_wanted: bool
+    lent_to: Optional[str]
+    lent_date: Optional[str]
+    lent_note: Optional[str]
 
 @dataclass
 class ValueStats:
@@ -107,12 +110,20 @@ def search_games(
                 ), 
                 NULL
             ) as current_price_new,
-            CASE WHEN w.id IS NOT NULL THEN 1 ELSE 0 END as wanted
+            CASE WHEN w.id IS NOT NULL THEN 1 ELSE 0 END as wanted,
+            l.lent_to,
+            l.lent_date,
+            l.note as lent_note
         FROM physical_games p
         LEFT JOIN purchased_games pg ON p.id = pg.physical_game
         LEFT JOIN wanted_games w ON p.id = w.physical_game
         LEFT JOIN physical_games_pricecharting_games pcg ON p.id = pcg.physical_game
         LEFT JOIN pricecharting_games pc ON pcg.pricecharting_game = pc.id
+        LEFT JOIN (
+            SELECT purchased_game, lent_to, lent_date, note
+            FROM lent_games
+            WHERE returned_date IS NULL
+        ) l ON pg.id = l.purchased_game
         WHERE LOWER(p.name) LIKE LOWER(?) OR LOWER(p.console) LIKE LOWER(?)
         GROUP BY p.id
         ORDER BY p.name ASC
@@ -136,7 +147,10 @@ def search_games(
             date=row[6],
             pricecharting_id=row[7],
             current_prices=current_prices,
-            is_wanted=bool(row[11])
+            is_wanted=bool(row[11]),
+            lent_to=row[12],
+            lent_date=row[13],
+            lent_note=row[14]
         ))
     
     return results
@@ -625,3 +639,50 @@ def remove_from_wishlist(conn: sqlite3.Connection, game_id: int) -> None:
     """
     cursor = conn.cursor()
     cursor.execute("DELETE FROM wanted_games WHERE physical_game = ?", (game_id,))
+
+def lend_game(conn: sqlite3.Connection, purchased_game_id: int, lent_to: str, lent_date: str, note: Optional[str] = None) -> bool:
+    """Lend a game to someone.
+    
+    Args:
+        conn: Database connection
+        purchased_game_id: ID of the purchased game to lend
+        lent_to: Name of the person borrowing the game
+        lent_date: Date the game was lent (YYYY-MM-DD)
+        note: Optional note about the lending
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO lent_games (purchased_game, lent_to, lent_date, note)
+            VALUES (?, ?, ?, ?)
+        """, (purchased_game_id, lent_to, lent_date, note))
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        return False
+
+def return_game(conn: sqlite3.Connection, purchased_game_id: int, return_date: str) -> bool:
+    """Mark a game as returned.
+    
+    Args:
+        conn: Database connection
+        purchased_game_id: ID of the purchased game that was returned
+        return_date: Date the game was returned (YYYY-MM-DD)
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE lent_games 
+            SET returned_date = ? 
+            WHERE purchased_game = ? AND returned_date IS NULL
+        """, (return_date, purchased_game_id))
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        return False
