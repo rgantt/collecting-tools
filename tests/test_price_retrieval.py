@@ -183,8 +183,8 @@ def test_retrieve_games_with_numeric_max_prices(db_connection):
     ])
     
     # Insert some test prices
-    current_time = datetime.datetime.utcnow().isoformat()
-    old_time = (datetime.datetime.utcnow() - datetime.timedelta(days=8)).isoformat()
+    current_time = datetime.datetime.now(datetime.UTC).isoformat()
+    old_time = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=8)).isoformat()
     
     db_connection.executemany("""
         INSERT INTO pricecharting_prices

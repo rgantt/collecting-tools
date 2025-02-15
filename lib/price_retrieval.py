@@ -21,7 +21,7 @@ def get_game_prices(game_id: str) -> Dict[str, Any]:
         document = BeautifulSoup(response.content, 'html.parser')
 
         # Use UTC time explicitly
-        current_time = datetime.datetime.utcnow().isoformat()
+        current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         return {
             'time': current_time,

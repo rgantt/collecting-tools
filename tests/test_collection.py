@@ -645,11 +645,11 @@ def test_end_to_end_game_management(initialized_library, monkeypatch):
         "0",                     # select first game
         "2",                     # choose update option
         "Zelda: Tears of the Kingdom",  # updated name
-        "Switch",                # keep same console
+        "",                      # keep same console
         "used",                  # new condition
-        "GameStop",              # keep same source
+        "",                      # keep same source
         "54.99",                # new price
-        "2025-02-11",           # keep same date
+        "",                     # keep same date
     ])
     monkeypatch.setattr('builtins.input', lambda _: next(search_edit_inputs))
 
@@ -658,15 +658,21 @@ def test_end_to_end_game_management(initialized_library, monkeypatch):
 
     # Verify the changes
     with initialized_library._db_connection() as conn:
-        results = search_games(conn, "Tears of the Kingdom")
-        assert len(results) == 1
-        updated_game = results[0]
-        assert updated_game.name == "Zelda: Tears of the Kingdom"  # Verify name change
-        assert updated_game.condition == "used"
-        assert float(updated_game.price) == 54.99
-        assert updated_game.console == "Switch"
-        assert updated_game.source == "GameStop"
-        assert updated_game.date == "2025-02-11"
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT pg.name, pg.console, p.condition, p.source, p.price, p.acquisition_date
+            FROM physical_games pg
+            JOIN purchased_games p ON pg.id = p.physical_game
+            WHERE pg.name LIKE ?
+        """, ('%Tears of the Kingdom%',))
+        result = cursor.fetchone()
+        assert result is not None
+        assert result[0] == "Zelda: Tears of the Kingdom"  # name
+        assert result[1] == "Switch"                       # console
+        assert result[2] == "used"                        # condition
+        assert result[3] == "GameStop"                    # source
+        assert round(float(result[4]), 2) == 54.99        # price
+        assert result[5] == "2025-02-11"                  # date
 
 def test_end_to_end_game_with_prices(initialized_library, monkeypatch):
     """Test end-to-end flow of adding a game with price information and finding it in search results."""

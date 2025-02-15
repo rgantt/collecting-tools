@@ -288,6 +288,127 @@ class GameLibrary:
         except DatabaseError as e:
             print(f"Failed to add game to wishlist: {e}")
 
+    def _display_game_info(self, result, index):
+        """Display information for a single game result."""
+        # Show status indicator and game name
+        status = "🔖 " if result.is_wanted else "📤 " if result.lent_to else ""
+        print(f"[{index}] {status}{result.name} ({result.console})")
+
+        # Get current price based on condition
+        condition = result.condition.lower() if result.condition else 'complete'
+        current_price = result.current_prices.get(condition)
+        
+        # Show current price and value change
+        if current_price:
+            print(f"    {condition}: ${current_price:.2f}", end="")
+            if not result.is_wanted and result.price:
+                value_change = current_price - float(result.price)
+                value_change_pct = (value_change / float(result.price)) * 100
+                print(f" ({value_change_pct:+.1f}%)", end="")
+            print()
+        else:
+            print("    no current price")
+            
+        # Show lending information if the game is currently lent
+        if result.lent_to:
+            print(f"    Lent to: {result.lent_to} on {result.lent_date}")
+            if result.lent_note:
+                print(f"    Note: {result.lent_note}")
+        print()
+
+    def _display_game_options(self, game):
+        """Display and handle game options menu."""
+        if game.is_wanted:
+            print("1. Delete game")
+            print("2. Update game")
+            print("3. Cancel")
+            return 3
+        else:
+            print("1. Delete game")
+            print("2. Update game")
+            print("3. " + ("Return game" if game.lent_to else "Lend game"))
+            print("4. Cancel")
+            return 4
+
+    def _delete_game(self, game, conn):
+        """Delete a game from the database."""
+        confirm = input("Are you sure you want to delete this game? (y/N): ").strip().lower()
+        if confirm != 'y':
+            return False
+
+        cursor = conn.cursor()
+        # Delete from purchased_games or wanted_games first
+        if game.is_wanted:
+            cursor.execute("DELETE FROM wanted_games WHERE physical_game = ?", (game.id,))
+        else:
+            cursor.execute("DELETE FROM purchased_games WHERE physical_game = ?", (game.id,))
+        
+        # Delete from physical_games_pricecharting_games if exists
+        cursor.execute("DELETE FROM physical_games_pricecharting_games WHERE physical_game = ?", (game.id,))
+        
+        # Finally delete from physical_games
+        cursor.execute("DELETE FROM physical_games WHERE id = ?", (game.id,))
+        print("Game deleted.")
+        return True
+
+    def _update_wishlist_item(self, game, conn):
+        """Update a wishlist item."""
+        print("\nEnter new values (or press Enter to keep current value)")
+        try:
+            updates = {}
+            name = input(f'Name [{game.name}]: ').strip()
+            if name:
+                updates['name'] = name
+            
+            console = input(f'Console [{game.console}]: ').strip()
+            if console:
+                updates['console'] = console
+
+            if updates:
+                update_wishlist_item(conn, game.id, updates)
+                print("Changes saved")
+            else:
+                print("No changes made")
+            return True
+        except (ValueError, EOFError):
+            print("\nEdit cancelled")
+            return False
+
+    def _update_collection_item(self, game, conn):
+        """Update a collection item."""
+        print("\nEnter new values (or press Enter to keep current value)")
+        try:
+            updates = {}
+            fields = [
+                ('name', game.name),
+                ('console', game.console),
+                ('condition', game.condition),
+                ('source', game.source),
+                ('price', game.price),
+                ('date', game.date)
+            ]
+            
+            for field, current_value in fields:
+                value = input(f'{field.title()} [{current_value}]: ').strip()
+                if value:
+                    updates[field] = value
+
+            if not updates:
+                print("No changes made")
+                return True
+
+            cursor = conn.cursor()
+            for field, value in updates.items():
+                if field in ['name', 'console']:
+                    cursor.execute(f"UPDATE physical_games SET {field} = ? WHERE id = ?", (value, game.id))
+                else:
+                    cursor.execute(f"UPDATE purchased_games SET {field} = ? WHERE physical_game = ?", (value, game.id))
+            print("Changes saved")
+            return True
+        except (ValueError, EOFError):
+            print("\nEdit cancelled")
+            return False
+
     def search_library(self):
         """Interactive search interface for the library."""
         try:
@@ -309,196 +430,73 @@ class GameLibrary:
 
                 print(f"\nFound {len(results)} games:\n")
                 for i, result in enumerate(results):
-                    # Show status indicator and game name
-                    status = ""
-                    if result.is_wanted:
-                        status = "🔖 "
-                    elif result.lent_to:
-                        status = "📤 "
-                    print(f"[{i}] {status}{result.name} ({result.console})")
+                    self._display_game_info(result, i)
 
-                    # Get current price based on condition
-                    condition = result.condition.lower() if result.condition else 'complete'
-                    current_price = result.current_prices.get(condition)
-                    
-                    # Show current price and value change
-                    if current_price:
-                        print(f"    {condition}: ${current_price:.2f}", end="")
-                        if not result.is_wanted and result.price:
-                            value_change = current_price - float(result.price)
-                            value_change_pct = (value_change / float(result.price)) * 100
-                            print(f" ({value_change_pct:+.1f}%)", end="")
-                        print()
-                    else:
-                        print("    no current price")
-                        
-                    # Show lending information if the game is currently lent
-                    if result.lent_to:
-                        print(f"    Lent to: {result.lent_to} on {result.lent_date}")
-                        if result.lent_note:
-                            print(f"    Note: {result.lent_note}")
-                    print()
+                selection = input("\nSelect a game by number or press Enter to cancel: ").strip()
+                if not selection:
+                    return
 
-                # Add interactive selection
                 try:
-                    selection = input("\nSelect a game by number or press Enter to cancel: ").strip()
-                    if selection:
-                        try:
-                            index = int(selection)
-                            if 0 <= index < len(results):
-                                selected_game = results[index]
-                                while True:
-                                    print("\nOptions:")
-                                    if selected_game.is_wanted:
-                                        print("1. Delete game")
-                                        print("2. Update game")
-                                        print("3. Cancel")
-                                        max_option = 3
-                                    else:
-                                        print("1. Delete game")
-                                        print("2. Update game")
-                                        if selected_game.lent_to:
-                                            print("3. Return game")
-                                        else:
-                                            print("3. Lend game")
-                                        print("4. Cancel")
-                                        max_option = 4
-                                    
-                                    choice = input(f"\nChoose an option (1-{max_option}): ").strip()
-                                    
-                                    if choice == "1":
-                                        confirm = input("Are you sure you want to delete this game? (y/N): ").strip().lower()
-                                        if confirm == 'y':
-                                            cursor = conn.cursor()
-                                            # Delete from purchased_games or wanted_games first
-                                            if selected_game.is_wanted:
-                                                cursor.execute("DELETE FROM wanted_games WHERE physical_game = ?", (selected_game.id,))
-                                            else:
-                                                cursor.execute("DELETE FROM purchased_games WHERE physical_game = ?", (selected_game.id,))
-                                            
-                                            # Delete from physical_games_pricecharting_games if exists
-                                            cursor.execute("DELETE FROM physical_games_pricecharting_games WHERE physical_game = ?", (selected_game.id,))
-                                            
-                                            # Finally delete from physical_games
-                                            cursor.execute("DELETE FROM physical_games WHERE id = ?", (selected_game.id,))
-                                            
-                                            print("Game deleted.")
-                                        break
-                                    elif choice == "2":
-                                        if selected_game.is_wanted:
-                                            # Handle wishlist item updates
-                                            print("\nEnter new values (or press Enter to keep current value)")
-                                            try:
-                                                updates = {}
-                                                
-                                                name = input(f'Name [{selected_game.name}]: ').strip()
-                                                if name:
-                                                    updates['name'] = name
-                                                
-                                                console = input(f'Console [{selected_game.console}]: ').strip()
-                                                if console:
-                                                    updates['console'] = console
+                    index = int(selection)
+                    if not (0 <= index < len(results)):
+                        print("Invalid selection")
+                        return
 
-                                                if not updates:
-                                                    print("No changes made")
-                                                else:
-                                                    update_wishlist_item(conn, selected_game.id, updates)
-                                                    print("Changes saved")
-                                            except (ValueError, EOFError):
-                                                print("\nEdit cancelled")
-                                        else:
-                                            # Handle collection item updates
-                                            print("\nEnter new values (or press Enter to keep current value)")
-                                            try:
-                                                updates = {}
-                                                name = input(f'Name [{selected_game.name}]: ').strip()
-                                                if name:
-                                                    updates['name'] = name
-                                                
-                                                console = input(f'Console [{selected_game.console}]: ').strip()
-                                                if console:
-                                                    updates['console'] = console
-                                                
-                                                condition = input(f'Condition [{selected_game.condition}]: ').strip()
-                                                if condition:
-                                                    updates['condition'] = condition
-                                                
-                                                source = input(f'Source [{selected_game.source}]: ').strip()
-                                                if source:
-                                                    updates['source'] = source
-                                                
-                                                price = input(f'Price [{selected_game.price}]: ').strip()
-                                                if price:
-                                                    updates['price'] = price
-                                                
-                                                date = input(f'Date [{selected_game.date}]: ').strip()
-                                                if date:
-                                                    updates['date'] = date
-
-                                                if not updates:
-                                                    print("No changes made")
-                                                else:
-                                                    cursor = conn.cursor()
-                                                    for field, value in updates.items():
-                                                        if field in ['name', 'console']:
-                                                            cursor.execute(f"UPDATE physical_games SET {field} = ? WHERE id = ?", (value, selected_game.id))
-                                                        else:
-                                                            cursor.execute(f"UPDATE purchased_games SET {field} = ? WHERE physical_game = ?", (value, selected_game.id))
-                                                    print("Changes saved")
-                                            except (ValueError, EOFError):
-                                                print("\nEdit cancelled")
-                                        break
-                                    elif choice == "3" and not selected_game.is_wanted:
-                                        if selected_game.lent_to:
-                                            # Return game
-                                            try:
-                                                return_date = self._get_valid_date("Return date")
-                                                cursor = conn.cursor()
-                                                cursor.execute("""
-                                                    SELECT id FROM purchased_games 
-                                                    WHERE physical_game = ?
-                                                """, (selected_game.id,))
-                                                purchased_game_id = cursor.fetchone()[0]
-                                                
-                                                if return_game(conn, purchased_game_id, return_date):
-                                                    print("Game marked as returned.")
-                                                else:
-                                                    print("Failed to mark game as returned.")
-                                            except (ValueError, EOFError):
-                                                print("\nReturn cancelled")
-                                        else:
-                                            # Lend game
-                                            try:
-                                                lent_to = input("Lent to: ").strip()
-                                                if not lent_to:
-                                                    print("Person name is required")
-                                                    continue
-                                                
-                                                lent_date = self._get_valid_date("Lent date")
-                                                note = input("Note (optional): ").strip() or None
-                                                
-                                                cursor = conn.cursor()
-                                                cursor.execute("""
-                                                    SELECT id FROM purchased_games 
-                                                    WHERE physical_game = ?
-                                                """, (selected_game.id,))
-                                                purchased_game_id = cursor.fetchone()[0]
-                                                
-                                                if lend_game(conn, purchased_game_id, lent_to, lent_date, note):
-                                                    print("Game marked as lent.")
-                                                else:
-                                                    print("Failed to mark game as lent.")
-                                            except (ValueError, EOFError):
-                                                print("\nLending cancelled")
-                                        break
-                                    elif (choice == "3" and selected_game.is_wanted) or (choice == "4" and not selected_game.is_wanted):
-                                        break
-                                    else:
-                                        print("Invalid choice")
-                        except ValueError:
-                            print("Invalid selection")
-                except EOFError:
-                    print("\nSelection cancelled")
+                    selected_game = results[index]
+                    while True:
+                        print("\nOptions:")
+                        max_option = self._display_game_options(selected_game)
+                        
+                        choice = input(f"\nChoose an option (1-{max_option}): ").strip()
+                        
+                        if choice == "1":
+                            if self._delete_game(selected_game, conn):
+                                break
+                        elif choice == "2":
+                            if selected_game.is_wanted:
+                                if self._update_wishlist_item(selected_game, conn):
+                                    break
+                            else:
+                                if self._update_collection_item(selected_game, conn):
+                                    break
+                        elif choice == "3" and not selected_game.is_wanted:
+                            if selected_game.lent_to:
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    UPDATE purchased_games 
+                                    SET lent_to = NULL, lent_date = NULL, lent_note = NULL 
+                                    WHERE physical_game = ?
+                                """, (selected_game.id,))
+                                print("Game marked as returned")
+                            else:
+                                try:
+                                    lent_to = input("Lent to: ").strip()
+                                    if not lent_to:
+                                        print("Lending cancelled")
+                                        continue
+                                    
+                                    lent_date = self._get_valid_date("Lent date", None)
+                                    if not lent_date:
+                                        print("Lending cancelled")
+                                        continue
+                                    
+                                    lent_note = input("Note (optional): ").strip()
+                                    
+                                    cursor = conn.cursor()
+                                    cursor.execute("""
+                                        UPDATE purchased_games 
+                                        SET lent_to = ?, lent_date = ?, lent_note = ?
+                                        WHERE physical_game = ?
+                                    """, (lent_to, lent_date, lent_note or None, selected_game.id))
+                                    print("Game marked as lent")
+                                except (ValueError, EOFError):
+                                    print("\nLending cancelled")
+                                    continue
+                            break
+                        elif choice in [str(max_option), "3"]:
+                            break
+                except ValueError:
+                    print("Invalid selection")
         except DatabaseError as e:
             print(f"Search failed: {e}")
 

@@ -619,6 +619,18 @@ def update_wishlist_item(conn: sqlite3.Connection, game_id: int, updates: Dict[s
                 WHERE id = ?
             """, values)
 
+            # Update pricecharting_games table if there's a linked record
+            if fields:  # Only if we have fields to update
+                cursor.execute("""
+                    UPDATE pricecharting_games
+                    SET """ + ', '.join(fields) + """
+                    WHERE id IN (
+                        SELECT pricecharting_game
+                        FROM physical_games_pricecharting_games
+                        WHERE physical_game = ?
+                    )
+                """, values)
+
         if 'condition' in updates:
             # Update wanted_games table
             cursor.execute("""
